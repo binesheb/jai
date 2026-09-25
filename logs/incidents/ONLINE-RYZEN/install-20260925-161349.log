@@ -1,0 +1,7 @@
+2026-09-25T16:13:49.3138556+05:30 JAI bootstrap started.
+2026-09-25T16:13:49.3286802+05:30 Host: ONLINE-RYZEN
+2026-09-25T16:13:49.6003438+05:30 OS: Microsoft Windows 11 Pro
+2026-09-25T16:13:49.6294576+05:30 RAM_GB: 15.4
+2026-09-25T16:13:51.0164550+05:30 Git not found. Installing Git via winget.
+2026-09-25T16:15:48.3695237+05:30 Docker CLI not found. Attempting Docker Desktop installation.
+2026-09-25T16:18:01.7122074+05:30 Cloning JAI repository.
