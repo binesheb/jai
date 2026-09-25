@@ -131,17 +131,30 @@ function Publish-LogToGitHub([string]$LocalPath) {
   try {
     $name = Split-Path -Leaf $LocalPath
     $remotePath = "logs/incidents/$env:COMPUTERNAME/$name"
-    $bytes = [IO.File]::ReadAllBytes($LocalPath)
+    $raw = Get-Content -LiteralPath $LocalPath -Raw -ErrorAction Stop
+    # Logs may contain command output with credentials. Redact common secret patterns before upload.
+    $safe = [regex]::Replace($raw, '(?im)(authorization\s*:\s*bearer\s+)[^\s]+', '$1[REDACTED]')
+    $safe = [regex]::Replace($safe, '(?im)((?:password|passwd|secret|token|api[_-]?key)\s*[=:]\s*)[^\s]+', '$1[REDACTED]')
+    $bytes = [Text.Encoding]::UTF8.GetBytes($safe)
     $content = [Convert]::ToBase64String($bytes)
-    $payload = @{ message="chore: upload JAI incident log $name"; content=$content; branch="main" } | ConvertTo-Json -Depth 5
+    $payload = @{ message="chore: upload JAI log $name"; content=$content; branch="main" } | ConvertTo-Json -Depth 5
     $uri = "https://api.github.com/repos/$Repo/contents/$remotePath"
     $result = Invoke-RestMethod -Method Put -Uri $uri -Headers $headers -Body $payload -ContentType "application/json"
-    Log "Incident log uploaded to GitHub: $remotePath"
+    Log "JAI log uploaded to GitHub: $remotePath"
     return @{ Path=$remotePath; HtmlUrl=$result.content.html_url; DownloadUrl="https://raw.githubusercontent.com/$Repo/main/$remotePath" }
   } catch {
     Log "GitHub log upload failed for $LocalPath : $($_.Exception.Message)" "WARN"
     return $null
   }
+}
+function Publish-AllLogsToGitHub {
+  $results = @()
+  if (-not (Test-Path -LiteralPath $LogDir)) { return $results }
+  foreach ($file in @(Get-ChildItem -LiteralPath $LogDir -Filter "*.log" -File -ErrorAction SilentlyContinue)) {
+    $result = Publish-LogToGitHub $file.FullName
+    if ($result) { $results += $result }
+  }
+  return $results
 }
 
 function Publish-Incident {
@@ -150,8 +163,8 @@ function Publish-Incident {
   if ([string]::IsNullOrWhiteSpace($token)) { Log "GitHub incident publishing skipped: no token or gh authentication found." "WARN"; return $false }
   $headers = @{ Authorization="Bearer $token"; Accept="application/vnd.github+json"; "X-GitHub-Api-Version"="2022-11-28" }
   $logPath = $Log
-  $githubLog = Publish-LogToGitHub $logPath
-  $githubLogText = if ($githubLog) { "[GitHub log]($($githubLog.HtmlUrl))`n`nRaw log: $($githubLog.DownloadUrl)" } else { "GitHub log upload was not available." }
+  $githubLogs = @(Publish-AllLogsToGitHub)
+  $githubLogText = if ($githubLogs.Count -gt 0) { ($githubLogs | ForEach-Object { "[GitHub log]($($_.HtmlUrl)) — raw: $($_.DownloadUrl)" }) -join "`n" } else { "GitHub log upload was not available." }
   $body = "## JAI automatic bootstrap incident`n`n**Status:** UNRESOLVED`n**Host:** $env:COMPUTERNAME`n**User:** $env:USERNAME`n**Time:** $(Get-Date -Format o)`n`n### Failure summary`n$FailureSummary`n`n### Bootstrap log`nPath: $logPath`n`n$githubLogText`n`n````text`n$(Read-LogText $logPath)`n```` `n`nThis issue was created automatically by JAI. The bootstrap log is retained locally until the incident is resolved."
   try {
     $openIssues = Invoke-RestMethod -Method Get -Uri "https://api.github.com/repos/$Repo/issues?state=open&per_page=50" -Headers $headers
