@@ -181,6 +181,54 @@ function Resolve-Tool([string]$Name, [string[]]$Candidates) {
   return $null
 }
 
+
+function Get-RemoteCommitSha {
+  try {
+    $api = Invoke-RestMethod -Method Get -Uri "https://api.github.com/repos/$Repo/commits/main" -Headers @{ Accept = "application/vnd.github+json"; "X-GitHub-Api-Version" = "2022-11-28" }
+    if ($api.sha) { return [string]$api.sha }
+  } catch {
+    Log "Unable to query GitHub for the current commit SHA: $($_.Exception.Message)" "WARN"
+  }
+  return $null
+}
+
+function Install-RepositoryFromArchive {
+  $tempRoot = Join-Path $env:TEMP ("jai-source-" + [guid]::NewGuid().ToString("N"))
+  $zip = Join-Path $env:TEMP ("jai-source-" + [guid]::NewGuid().ToString("N") + ".zip")
+  try {
+    New-Item -ItemType Directory -Force -Path $tempRoot | Out-Null
+    Log "Using GitHub source archive fallback because Git transport could not complete." "WARN"
+    Run-With-Retry "GitHub source archive download" {
+      Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/$Repo/archive/refs/heads/main.zip" -OutFile $zip
+      if (-not (Test-Path -LiteralPath $zip) -or (Get-Item -LiteralPath $zip).Length -lt 1024) {
+        throw "GitHub source archive download was empty or incomplete."
+      }
+    } -Attempts 3 -DelaySeconds 5
+
+    Expand-Archive -LiteralPath $zip -DestinationPath $tempRoot -Force
+    $source = Get-ChildItem -LiteralPath $tempRoot -Directory | Select-Object -First 1
+    if (-not $source) { throw "GitHub source archive did not contain a repository directory." }
+
+    if (Test-Path -LiteralPath $RepoDir) {
+      $backup = "$RepoDir.archive-recovery-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+      Log "Moving failed repository checkout to $backup." "WARN"
+      Move-Item -LiteralPath $RepoDir -Destination $backup -Force
+    }
+
+    Move-Item -LiteralPath $source.FullName -Destination $RepoDir -Force
+    $remoteSha = Get-RemoteCommitSha
+    if ($remoteSha) {
+      $State.Commit = $remoteSha
+      Log "Deployed source archive revision: $remoteSha"
+    } else {
+      Log "Source archive deployed, but the remote commit SHA could not be determined." "WARN"
+    }
+  } finally {
+    Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
 function Test-Pending-Reboot {
   $keys = @(
     "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending",
@@ -497,8 +545,13 @@ try {
       Remove-Item -Recurse -Force $RepoDir
     }
 
-    Run-Command "git clone" {
-      & $GitExe clone "https://github.com/$Repo.git" $RepoDir
+    try {
+      Run-With-Retry "git clone" {
+        & $GitExe clone "https://github.com/$Repo.git" $RepoDir
+      } -Attempts 2 -DelaySeconds 5
+    } catch {
+      Log "Git clone failed. Falling back to the GitHub source archive." "WARN"
+      Install-RepositoryFromArchive
     }
   } else {
     # Existing checkout: recover automatically from stale locks, broken refs,
@@ -550,8 +603,13 @@ try {
         $backup = "$RepoDir.recovery-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
         Log "Repository recovery fetch failed. Moving checkout to $backup and cloning clean." "WARN"
         Move-Item -LiteralPath $RepoDir -Destination $backup -Force
-        Run-Command "git clean clone" {
-          & $GitExe clone "https://github.com/$Repo.git" $RepoDir
+        try {
+          Run-With-Retry "git clean clone" {
+            & $GitExe clone "https://github.com/$Repo.git" $RepoDir
+          } -Attempts 2 -DelaySeconds 5
+        } catch {
+          Log "Clean Git clone failed. Falling back to the GitHub source archive." "WARN"
+          Install-RepositoryFromArchive
         }
       }
     }
@@ -565,10 +623,18 @@ try {
     }
   }
 
-  $commit = & $GitExe -C $RepoDir rev-parse HEAD
-  $State.Commit = $commit
-  Save-State
-  Log "JAI source revision: $commit"
+  if (Test-Path -LiteralPath (Join-Path $RepoDir ".git")) {
+    $commit = (& $GitExe -C $RepoDir rev-parse HEAD | Select-Object -First 1).ToString().Trim()
+  } else {
+    $commit = Get-RemoteCommitSha
+  }
+  if (-not [string]::IsNullOrWhiteSpace($commit)) {
+    $State.Commit = $commit
+    Save-State
+    Log "JAI source revision: $commit"
+  } else {
+    Log "JAI source revision could not be determined." "WARN"
+  }
   Step-End "Preparing JAI repository"
 
   # Docker Engine
