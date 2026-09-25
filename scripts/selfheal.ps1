@@ -51,6 +51,39 @@ function Get-OpenIncident {
     return ($items | Where-Object { $_.pull_request -eq $null -and $_.title -eq $title } | Select-Object -First 1)
   } catch { Log "GitHub incident lookup failed: $($_.Exception.Message)" "WARN"; return $null }
 }
+function Publish-LogToGitHub([string]$LocalPath) {
+  if (-not (Test-Path -LiteralPath $LocalPath)) { return $null }
+  $token=Get-GitHubToken
+  if([string]::IsNullOrWhiteSpace($token)){ Log "GitHub log upload skipped: no token." "WARN"; return $null }
+  $headers=@{Authorization="Bearer $token";Accept="application/vnd.github+json";"X-GitHub-Api-Version"="2022-11-28"}
+  try {
+    $name=Split-Path -Leaf $LocalPath
+    $remotePath="logs/incidents/$env:COMPUTERNAME/$name"
+    $bytes=[IO.File]::ReadAllBytes($LocalPath)
+    $content=[Convert]::ToBase64String($bytes)
+    $payload=@{message="chore: upload JAI incident log $name";content=$content;branch="main"}|ConvertTo-Json -Depth 5
+    $uri="https://api.github.com/repos/binesheb/jai/contents/$remotePath"
+    $result=Invoke-RestMethod -Method Put -Uri $uri -Headers $headers -Body $payload -ContentType "application/json"
+    Log "Incident log uploaded to GitHub: $remotePath"
+    return @{Path=$remotePath;HtmlUrl=$result.content.html_url;DownloadUrl="https://raw.githubusercontent.com/binesheb/jai/main/$remotePath"}
+  } catch { Log "GitHub log upload failed for $LocalPath : $($_.Exception.Message)" "WARN"; return $null }
+}
+function Remove-LogFromGitHub([string]$LocalPath) {
+  if([string]::IsNullOrWhiteSpace($LocalPath)){ return }
+  $token=Get-GitHubToken
+  if([string]::IsNullOrWhiteSpace($token)){ return }
+  $headers=@{Authorization="Bearer $token";Accept="application/vnd.github+json";"X-GitHub-Api-Version"="2022-11-28"}
+  try {
+    $name=Split-Path -Leaf $LocalPath
+    $remotePath="logs/incidents/$env:COMPUTERNAME/$name"
+    $uri="https://api.github.com/repos/binesheb/jai/contents/$remotePath?ref=main"
+    $file=Invoke-RestMethod -Method Get -Uri $uri -Headers $headers
+    $payload=@{message="chore: remove resolved JAI incident log $name";sha=$file.sha;branch="main"}|ConvertTo-Json
+    Invoke-RestMethod -Method Delete -Uri "https://api.github.com/repos/binesheb/jai/contents/$remotePath" -Headers $headers -Body $payload -ContentType "application/json" | Out-Null
+    Log "Resolved incident log removed from GitHub: $remotePath"
+  } catch { Log "GitHub incident log cleanup failed for $LocalPath : $($_.Exception.Message)" "WARN" }
+}
+
 function Publish-GitHubIncident([bool]$Resolved) {
   $token=Get-GitHubToken; if([string]::IsNullOrWhiteSpace($token)){ Log "GitHub incident publishing skipped: no token or gh authentication found." "WARN"; return }
   $headers=@{Authorization="Bearer $token";Accept="application/vnd.github+json";"X-GitHub-Api-Version"="2022-11-28"}
@@ -63,8 +96,11 @@ function Publish-GitHubIncident([bool]$Resolved) {
   }
   if(-not $issue){ $issue=Get-OpenIncident }
   if(-not $Resolved -and -not $issue){
+    $uploadedIncident=Publish-LogToGitHub $IncidentLog
+    $uploadedSelfHeal=Publish-LogToGitHub $Log
     $incident=Read-LogTail $IncidentLog
-    $body="## JAI automatic incident report`n`n**Status:** UNRESOLVED`n**Host:** $env:COMPUTERNAME`n**User:** $env:USERNAME`n**Time:** $(Get-Date -Format o)`n`n### Failure summary`n$FailureSummary`n`n### Bootstrap log`nPath: $IncidentLog`n`n````text`n$incident`n```` `n`n### Self-Heal log`nPath: $Log`n`n````text`n$(Read-LogTail $Log)`n```` `n`nThis issue was created automatically by JAI. Logs are retained locally until the incident is resolved."
+    $incidentLinks = @($uploadedIncident,$uploadedSelfHeal) | Where-Object { $_ } | ForEach-Object { "[GitHub log]($($_.HtmlUrl)) — raw: $($_.DownloadUrl)" } | Out-String
+    $body="## JAI automatic incident report`n`n**Status:** UNRESOLVED`n**Host:** $env:COMPUTERNAME`n**User:** $env:USERNAME`n**Time:** $(Get-Date -Format o)`n`n### GitHub logs`n$incidentLinks`n### Failure summary`n$FailureSummary`n`n### Bootstrap log`nPath: $IncidentLog`n`n````text`n$incident`n```` `n`n### Self-Heal log`nPath: $Log`n`n````text`n$(Read-LogTail $Log)`n```` `n`nThis issue was created automatically by JAI. Logs are retained locally until the incident is resolved."
     try { $payload=@{title="JAI Bootstrap Incident - $env:COMPUTERNAME";body=$body}|ConvertTo-Json -Depth 5; $issue=Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/binesheb/jai/issues" -Headers $headers -Body $payload -ContentType "application/json"; $script:State.IncidentIssueNumber=$issue.number; $script:State.IncidentLog=$IncidentLog; Save-State; Log "GitHub incident issue created: #$($issue.number)" } catch { Log "GitHub incident publishing failed: $($_.Exception.Message)" "WARN"; return }
   }
   if($Resolved -and $issue){
@@ -81,7 +117,7 @@ function Publish-GitHubIncident([bool]$Resolved) {
     $logsToRemove=@($IncidentLog,$Log) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -Unique
     foreach($p in $logsToRemove){ Log "Resolved incident log scheduled for cleanup: $p" }
     $script:State.IncidentIssueNumber=$null; $script:State.IncidentLog=$null; Save-State
-    foreach($p in $logsToRemove){ Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }
+    foreach($p in $logsToRemove){ Remove-LogFromGitHub $p; Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }
   } elseif(-not $Resolved -and $issue){
     try { $comment=@{body="JAI Self-Heal ran again but the environment is still not healthy. Latest self-heal log: $Log"}|ConvertTo-Json; Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/binesheb/jai/issues/$($issue.number)/comments" -Headers $headers -Body $comment -ContentType "application/json" | Out-Null } catch { Log "GitHub incident update failed: $($_.Exception.Message)" "WARN" }
   }
