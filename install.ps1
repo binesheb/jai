@@ -128,7 +128,8 @@ function Publish-Incident {
   $token = Get-GitHubToken
   if ([string]::IsNullOrWhiteSpace($token)) { Log "GitHub incident publishing skipped: no token or gh authentication found." "WARN"; return $false }
   $headers = @{ Authorization="Bearer $token"; Accept="application/vnd.github+json"; "X-GitHub-Api-Version"="2022-11-28" }
-  $body = "## JAI automatic bootstrap incident`n`n**Status:** UNRESOLVED`n**Host:** $env:COMPUTERNAME`n**User:** $env:USERNAME`n**Time:** $(Get-Date -Format o)`n`n### Failure summary`n$FailureSummary`n`n### Bootstrap log`nPath: $Log`n`n````text`n$(Read-LogText $Log)`n```` `n`nThis issue was created automatically by JAI. The bootstrap log is retained locally until the incident is resolved."
+  $logPath = $Log
+  $body = "## JAI automatic bootstrap incident`n`n**Status:** UNRESOLVED`n**Host:** $env:COMPUTERNAME`n**User:** $env:USERNAME`n**Time:** $(Get-Date -Format o)`n`n### Failure summary`n$FailureSummary`n`n### Bootstrap log`nPath: $logPath`n`n````text`n$(Read-LogText $logPath)`n```` `n`nThis issue was created automatically by JAI. The bootstrap log is retained locally until the incident is resolved."
   try {
     $payload = @{ title="JAI Bootstrap Incident - $env:COMPUTERNAME"; body=$body } | ConvertTo-Json -Depth 5
     $issue = Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/$Repo/issues" -Headers $headers -Body $payload -ContentType "application/json"
