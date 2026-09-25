@@ -16,6 +16,8 @@ $State = [ordered]@{
   WslInstalledByJAI = $false
   DockerInstalledByJAI = $false
   WslDistro = $null
+  IncidentIssueNumber = $null
+  IncidentLog = $null
   InstalledAt = (Get-Date -Format o)
   Host = $env:COMPUTERNAME
 }
@@ -33,6 +35,40 @@ if (Test-Path $StateFile) {
 
 function Save-State {
   $State | ConvertTo-Json | Set-Content -Path $StateFile -Encoding UTF8
+}
+function Get-GitHubToken {
+  foreach ($name in @("JAI_GITHUB_TOKEN","GH_TOKEN","GITHUB_TOKEN")) {
+    $v = [Environment]::GetEnvironmentVariable($name,"Process")
+    if ([string]::IsNullOrWhiteSpace($v)) { $v = [Environment]::GetEnvironmentVariable($name,"User") }
+    if ([string]::IsNullOrWhiteSpace($v)) { $v = [Environment]::GetEnvironmentVariable($name,"Machine") }
+    if (-not [string]::IsNullOrWhiteSpace($v)) { return $v }
+  }
+  $gh = Get-Command gh -ErrorAction SilentlyContinue
+  if ($gh) { try { $v = & $gh.Source auth token 2>$null; if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($v)) { return ($v | Select-Object -First 1) } } catch {} }
+  return $null
+}
+function Read-LogText([string]$Path,[int]$MaxChars=50000) {
+  if (-not (Test-Path -LiteralPath $Path)) { return "(log file not found: $Path)" }
+  $text = Get-Content -LiteralPath $Path -Raw -ErrorAction SilentlyContinue
+  if ($null -eq $text) { return "(unable to read log file: $Path)" }
+  if ($text.Length -gt $MaxChars) { return "[log truncated]`n" + $text.Substring($text.Length-$MaxChars) }
+  return $text
+}
+function Publish-Incident {
+  param([string]$FailureSummary)
+  $token = Get-GitHubToken
+  if ([string]::IsNullOrWhiteSpace($token)) { Log "GitHub incident publishing skipped: no token or gh authentication found." "WARN"; return $false }
+  $headers = @{ Authorization="Bearer $token"; Accept="application/vnd.github+json"; "X-GitHub-Api-Version"="2022-11-28" }
+  $body = "## JAI automatic bootstrap incident`n`n**Status:** UNRESOLVED`n**Host:** $env:COMPUTERNAME`n**User:** $env:USERNAME`n**Time:** $(Get-Date -Format o)`n`n### Failure summary`n$FailureSummary`n`n### Bootstrap log`nPath: $Log`n`n````text`n$(Read-LogText $Log)`n```` `n`nThis issue was created automatically by JAI. The bootstrap log is retained locally until the incident is resolved."
+  try {
+    $payload = @{ title="JAI Bootstrap Incident - $env:COMPUTERNAME"; body=$body } | ConvertTo-Json -Depth 5
+    $issue = Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/$Repo/issues" -Headers $headers -Body $payload -ContentType "application/json"
+    $State.IncidentIssueNumber = $issue.number
+    $State.IncidentLog = $Log
+    Save-State
+    Log "GitHub incident issue created: #$($issue.number)"
+    return $true
+  } catch { Log "GitHub incident publishing failed: $($_.Exception.Message)" "WARN"; return $false }
 }
 
 function Log([string]$Message, [string]$Level = "INFO") {
@@ -504,7 +540,7 @@ try {
     Log "Docker image pull still failing after normal retries. Starting JAI Self-Heal." "WARN"
     $selfHeal = Join-Path $RepoDir "scripts\selfheal.ps1"
     if (Test-Path -LiteralPath $selfHeal) {
-      & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $selfHeal -IncidentLog $Log -FailureSummary "JAI bootstrap failed: $($_.Exception.Message)" -IncidentLog $Log -FailureSummary "Docker image pull failed after automatic retries." 
+      & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $selfHeal -IncidentLog $Log -FailureSummary "Docker image pull failed after automatic retries."
       if ($LASTEXITCODE -ne 0) {
         throw "Docker image pull failed and JAI Self-Heal could not fully recover the environment."
       }
@@ -547,6 +583,7 @@ try {
 } catch {
   Log "JAI bootstrap FAILED: $($_.Exception.Message)" "ERROR"
   Log "Stack: $($_.ScriptStackTrace)" "ERROR"
+  Publish-Incident -FailureSummary $_.Exception.Message | Out-Null
   Write-Host ""
   Write-Host "JAI bootstrap FAILED. Attempting automatic recovery..." -ForegroundColor Yellow
   $selfHeal = Join-Path $RepoDir "scripts\selfheal.ps1"
