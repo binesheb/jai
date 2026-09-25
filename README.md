@@ -34,20 +34,23 @@ The `logs` directory itself remains available for future diagnostics. Failed log
 
 JAI can automatically create a GitHub Issue containing the failed bootstrap/self-heal logs. When the final health check passes, JAI comments on that same incident and closes it as resolved.
 
-Authentication is attempted in this order:
+During installation JAI automatically installs the GitHub CLI if it is missing, checks whether GitHub is already authenticated, and asks:
 
-1. `JAI_GITHUB_TOKEN`
-2. `GH_TOKEN`
-3. `GITHUB_TOKEN`
-4. an authenticated GitHub CLI session (`gh auth token`)
-
-For a machine that should report incidents automatically, authenticate GitHub CLI once:
-
-```powershell
-gh auth login
+```text
+Authenticate GitHub now? [Y/N]:
 ```
 
-Then JAI can create, comment on, and close Issues without putting the token into JAI logs. If no GitHub authentication is available, JAI continues working normally and records a warning locally instead of failing the installation.
+If you choose **Y**, JAI starts the GitHub CLI browser/device authentication flow:
+
+```powershell
+gh auth login --hostname github.com --git-protocol https --web
+```
+
+After login, JAI verifies that the authenticated account can write to `binesheb/jai`. The GitHub username and authentication status are recorded in `installation-state.json`; access tokens are never written to the JAI logs or repository.
+
+If you choose **N**, or authentication cannot be completed, installation continues normally and JAI records a warning. Automatic GitHub incident reporting becomes available as soon as the GitHub CLI is authenticated.
+
+JAI can also use `JAI_GITHUB_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN` for non-interactive environments. These values are read only from the environment and are never intentionally logged.
 
 Incident reports are deliberately truncated when necessary to stay within GitHub Issue size limits. Credentials are not intentionally written to the incident body.
 
