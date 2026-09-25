@@ -42,13 +42,13 @@ function Log([string]$Message, [string]$Level = "INFO") {
 
 function Step-Start([string]$Name) {
   $script:Step++
-  Log "STEP $script:Step START: $Name"
+  Log ("STEP {0} START: {1}" -f $script:Step, $Name)
   Write-Host ""
-  Write-Host "[$script:Step] $Name" -ForegroundColor Cyan
+  Write-Host ("[{0}] {1}" -f $script:Step, $Name) -ForegroundColor Cyan
 }
 
 function Step-End([string]$Name) {
-  Log "STEP $script:Step COMPLETE: $Name"
+  Log ("STEP {0} COMPLETE: {1}" -f $script:Step, $Name)
   Write-Host "[OK] $Name" -ForegroundColor Green
 }
 
@@ -121,7 +121,7 @@ function Run-Command([string]$Name, [scriptblock]$Command) {
 function Run-With-Retry([string]$Name, [scriptblock]$Command, [int]$Attempts = 3, [int]$DelaySeconds = 10) {
   for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
     try {
-      Log "RETRYABLE COMMAND ATTEMPT ${attempt}/${Attempts}: $Name"
+      Log ("RETRYABLE COMMAND ATTEMPT {0}/{1}: {2}" -f $attempt, $Attempts, $Name)
       & $Command 2>&1 | ForEach-Object {
         $text = $_.ToString()
         Log "$Name :: $text"
