@@ -10,15 +10,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Validate compose
+        env:
+          JAI_POSTGRES_PASSWORD: ci-only-password
         run: docker compose config
-      - name: Validate PowerShell
+      - name: Validate PowerShell syntax
         shell: pwsh
         run: |
-          Get-ChildItem -Path scripts -Filter *.ps1 -Recurse | ForEach-Object {
-            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$null,[ref]$null) | Out-Null
+          $files = @("install.ps1","uninstall.ps1") + @(Get-ChildItem -Path scripts -Filter *.ps1 -Recurse | ForEach-Object { $_.FullName })
+          foreach ($file in $files) {
+            $tokens=$null; $errors=$null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file),[ref]$tokens,[ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | Format-List | Out-String | Write-Host
+              throw "PowerShell syntax validation failed: $file"
+            }
+            Write-Host "[OK] $file"
           }
       - name: Sanity
         run: |
           test -f README.md
           test -f docs/architecture.md
           test -f docker-compose.yml
+          test -f install.ps1
+          test -f uninstall.ps1
