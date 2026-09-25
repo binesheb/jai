@@ -898,14 +898,31 @@ try {
   }
 
   try {
-    Run-With-Retry "docker compose up -d" {
+    # Docker Desktop/Compose can return a non-zero status after successfully
+    # reconciling containers (for example when a service transitions to Running
+    # while its health check is still progressing). Capture the status, but use
+    # Docker's actual container health as the deployment contract.
+    $composeUpSucceeded = $false
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+      Log "COMPOSE START ATTEMPT $attempt/3: docker compose up -d"
       Push-Location $RepoDir
-      try { docker compose up -d } finally { Pop-Location }
-    } 3 15
+      try {
+        $global:LASTEXITCODE = 0
+        $composeOutput = @(& docker compose up -d 2>&1)
+        $composeExit = $LASTEXITCODE
+        foreach ($item in $composeOutput) {
+          Log "docker compose up -d :: $($item.ToString())"
+          Write-Host $item
+        }
+        Log "docker compose up -d exit code: $composeExit"
+        if ($composeExit -eq 0) { $composeUpSucceeded = $true; break }
+      } finally { Pop-Location }
+      if ($attempt -lt 3) { Start-Sleep -Seconds 15 }
+    }
 
-    # Do not rely on Compose's --wait exit status on Docker Desktop. Explicitly
-    # evaluate each service's Docker health state and require both services to
-    # become healthy before bootstrap is considered successful.
+    # Do not rely on Compose's exit status. Explicitly evaluate each service's
+    # Docker health state and require both services to become healthy before
+    # bootstrap is considered successful.
     $healthDeadline = (Get-Date).AddSeconds(180)
     $healthy = $false
     while ((Get-Date) -lt $healthDeadline) {
@@ -931,7 +948,7 @@ try {
     }
     Log "JAI service health gate PASSED: postgres and redis are healthy."
   } catch {
-    Log "docker compose up -d --wait failed. Collecting Docker volume/container diagnostics before recovery." "ERROR"
+    Log "JAI service health gate failed after docker compose startup. Collecting Docker volume/container diagnostics before recovery." "ERROR"
     try {
       $volumes = & docker volume ls --format "{{.Name}} | {{.Driver}}" 2>&1
       $volumes | ForEach-Object { Log "DOCKER VOLUME :: $($_.ToString())" }
