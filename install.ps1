@@ -41,14 +41,14 @@ function Log([string]$Message, [string]$Level = "INFO") {
 }
 
 function Step-Start([string]$Name) {
-  ${script:Step}++
-  Log "STEP ${script:Step} START: $Name"
+  $script:Step++
+  Log "STEP $script:Step START: $Name"
   Write-Host ""
-  Write-Host "[${script:Step}] $Name" -ForegroundColor Cyan
+  Write-Host "[$script:Step] $Name" -ForegroundColor Cyan
 }
 
 function Step-End([string]$Name) {
-  Log "STEP ${script:Step} COMPLETE: $Name"
+  Log "STEP $script:Step COMPLETE: $Name"
   Write-Host "[OK] $Name" -ForegroundColor Green
 }
 
