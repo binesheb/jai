@@ -862,24 +862,38 @@ try {
     # Pull each image directly so the registry error, HTTP status, TLS/proxy error,
     # or manifest error is captured verbatim in the diagnostic log.
     $images = @("redis:7-alpine", "pgvector/pgvector:0.8.6-pg16")
+    $directPullFailures = @()
     foreach ($image in $images) {
       try {
         Run-With-Retry "docker pull $image" {
           & docker pull $image
         } 2 10
       } catch {
+        $directPullFailures += $image
         Log "DIRECT IMAGE PULL FAILED: $image :: $($_.Exception.Message)" "ERROR"
       }
     }
-    Log "Starting JAI Self-Heal after direct image diagnostics." "WARN"
-    $selfHeal = Join-Path $RepoDir "scripts\selfheal.ps1"
-    if (Test-Path -LiteralPath $selfHeal) {
-      & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $selfHeal -IncidentLog $Log -FailureSummary "Docker image pull failed after automatic retries."
-      if ($LASTEXITCODE -ne 0) {
-        throw "Docker image pull failed and JAI Self-Heal could not fully recover the environment."
-      }
+
+    if ($directPullFailures.Count -eq 0) {
+      # Compose pull can fail while the Docker Engine can successfully obtain
+      # every required image. In that case the images are usable and the
+      # installation should continue instead of invoking unnecessary self-heal.
+      Log "DIRECT IMAGE PULLS: ALL REQUIRED IMAGES AVAILABLE. Treating Compose pull failure as non-blocking." "WARN"
+      Log "Continuing directly to docker compose up -d."
     } else {
-      throw
+      Log "Starting JAI Self-Heal after direct image diagnostics. Failed images: $($directPullFailures -join ', ')" "WARN"
+      $selfHeal = Join-Path $RepoDir "scripts\selfheal.ps1"
+      if (Test-Path -LiteralPath $selfHeal) {
+        $global:LASTEXITCODE = 0
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $selfHeal -IncidentLog $Log -FailureSummary "Docker image pull failed after automatic retries. Direct pull failures: $($directPullFailures -join ', ')"
+        $selfHealExit = $LASTEXITCODE
+        Log "Self-Heal process exit code: $selfHealExit"
+        if ($selfHealExit -ne 0) {
+          throw "Docker image pull failed and JAI Self-Heal could not fully recover the environment."
+        }
+      } else {
+        throw
+      }
     }
   }
 
