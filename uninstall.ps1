@@ -66,6 +66,10 @@ RemovePath $Root
 
 # Remove only prerequisites that this JAI installation explicitly installed.
 if ($State) {
+  if ($State.GitHubCliInstalledByJAI -eq $true -and (Get-Command winget -ErrorAction SilentlyContinue)) {
+    Log "JAI installed GitHub CLI; attempting removal."
+    winget uninstall --id GitHub.cli -e --source winget --accept-source-agreements --silent 2>&1 | ForEach-Object { Log "winget :: $($_.ToString())" }
+  }
   if ($State.DockerInstalledByJAI -eq $true -and (Get-Command winget -ErrorAction SilentlyContinue)) {
     Log "JAI installed Docker Desktop; attempting removal."
     winget uninstall --id Docker.DockerDesktop -e --source winget --accept-source-agreements --silent 2>&1 | ForEach-Object { Log "winget :: $($_.ToString())" }
