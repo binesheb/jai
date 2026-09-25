@@ -908,8 +908,18 @@ try {
       Push-Location $RepoDir
       try {
         $global:LASTEXITCODE = 0
-        $composeOutput = @(& docker compose up -d 2>&1)
-        $composeExit = $LASTEXITCODE
+        # PowerShell 5.1 can promote native stderr from Docker into a terminating
+        # ErrorRecord when $ErrorActionPreference=Stop. Docker Compose legitimately
+        # writes status/warning text to stderr, so capture it without allowing the
+        # transport itself to abort the health-gate logic.
+        $previousErrorActionPreference = $ErrorActionPreference
+        try {
+          $ErrorActionPreference = "Continue"
+          $composeOutput = @(& docker compose up -d 2>&1)
+          $composeExit = $LASTEXITCODE
+        } finally {
+          $ErrorActionPreference = $previousErrorActionPreference
+        }
         foreach ($item in $composeOutput) {
           Log "docker compose up -d :: $($item.ToString())"
           Write-Host $item
