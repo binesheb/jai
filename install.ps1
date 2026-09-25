@@ -898,12 +898,12 @@ try {
   }
 
   try {
-    Run-Command "docker compose up -d" {
+    Run-With-Retry "docker compose up -d --wait" {
       Push-Location $RepoDir
-      try { docker compose up -d } finally { Pop-Location }
-    }
+      try { docker compose up -d --wait --wait-timeout 180 } finally { Pop-Location }
+    } 3 15
   } catch {
-    Log "docker compose up -d failed. Collecting Docker volume/container diagnostics before recovery." "ERROR"
+    Log "docker compose up -d --wait failed. Collecting Docker volume/container diagnostics before recovery." "ERROR"
     try {
       $volumes = & docker volume ls --format "{{.Name}} | {{.Driver}}" 2>&1
       $volumes | ForEach-Object { Log "DOCKER VOLUME :: $($_.ToString())" }
