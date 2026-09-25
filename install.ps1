@@ -144,6 +144,13 @@ function Publish-LogToGitHub([string]$LocalPath) {
     if($existing -and $existing.sha){ $payload.sha = $existing.sha }
     $result = Invoke-RestMethod -Method Put -Uri $uri -Headers $headers -Body ($payload | ConvertTo-Json -Depth 5) -ContentType "application/json"
     Log "JAI log uploaded to GitHub: $remotePath"
+    # Delete the local copy only after GitHub has acknowledged the upload.
+    try {
+      Remove-Item -LiteralPath $LocalPath -Force -ErrorAction Stop
+      Log "Local log deleted after confirmed GitHub upload: $LocalPath"
+    } catch {
+      Log "GitHub upload succeeded but local log could not be deleted: $LocalPath : $($_.Exception.Message)" "WARN"
+    }
     return @{ Path=$remotePath; HtmlUrl=$result.content.html_url; DownloadUrl="https://raw.githubusercontent.com/$Repo/main/$remotePath" }
   } catch {
     Log "GitHub log upload failed for $LocalPath : $($_.Exception.Message)" "WARN"
