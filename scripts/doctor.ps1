@@ -12,6 +12,7 @@ Check "Git" { git --version | Out-Null }
 Check "WSL" { wsl --status | Out-Null }
 Check "Docker" { docker version | Out-Null }
 Check "Docker Compose" { docker compose version | Out-Null }
+$env:Path = "$([Environment]::GetEnvironmentVariable("Path","Machine"));$([Environment]::GetEnvironmentVariable("Path","User"))"
 $repo = Join-Path $Root "repo"
 if (Test-Path (Join-Path $repo "docker-compose.yml")) {
   Push-Location $repo
