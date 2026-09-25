@@ -59,14 +59,25 @@ function Publish-LogToGitHub([string]$LocalPath) {
   try {
     $name=Split-Path -Leaf $LocalPath
     $remotePath="logs/incidents/$env:COMPUTERNAME/$name"
-    $bytes=[IO.File]::ReadAllBytes($LocalPath)
-    $content=[Convert]::ToBase64String($bytes)
-    $payload=@{message="chore: upload JAI incident log $name";content=$content;branch="main"}|ConvertTo-Json -Depth 5
-    $uri="https://api.github.com/repos/binesheb/jai/contents/$remotePath"
+    $raw=Get-Content -LiteralPath $LocalPath -Raw -ErrorAction Stop
+    $safe=[regex]::Replace($raw,'(?im)(authorization\s*:\s*bearer\s+)[^\s]+','$1[REDACTED]')
+    $safe=[regex]::Replace($safe,'(?im)((?:password|passwd|secret|token|api[_-]?key)\s*[=:]\s*)[^\s]+','$1[REDACTED]')
+    $content=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($safe))
+    $payload=@{message="chore: upload JAI log $name";content=$content;branch="main"}|ConvertTo-Json -Depth 5
+    $uri="https://api.github.com/repos/$Repo/contents/$remotePath"
     $result=Invoke-RestMethod -Method Put -Uri $uri -Headers $headers -Body $payload -ContentType "application/json"
-    Log "Incident log uploaded to GitHub: $remotePath"
-    return @{Path=$remotePath;HtmlUrl=$result.content.html_url;DownloadUrl="https://raw.githubusercontent.com/binesheb/jai/main/$remotePath"}
+    Log "JAI log uploaded to GitHub: $remotePath"
+    return @{Path=$remotePath;HtmlUrl=$result.content.html_url;DownloadUrl="https://raw.githubusercontent.com/$Repo/main/$remotePath"}
   } catch { Log "GitHub log upload failed for $LocalPath : $($_.Exception.Message)" "WARN"; return $null }
+}
+function Publish-AllLogsToGitHub {
+  $results=@()
+  if(-not(Test-Path -LiteralPath $LogDir)){ return $results }
+  foreach($file in @(Get-ChildItem -LiteralPath $LogDir -Filter "*.log" -File -ErrorAction SilentlyContinue)){
+    $result=Publish-LogToGitHub $file.FullName
+    if($result){ $results += $result }
+  }
+  return $results
 }
 function Remove-LogFromGitHub([string]$LocalPath) {
   if([string]::IsNullOrWhiteSpace($LocalPath)){ return }
@@ -96,10 +107,9 @@ function Publish-GitHubIncident([bool]$Resolved) {
   }
   if(-not $issue){ $issue=Get-OpenIncident }
   if(-not (Test-Path -LiteralPath $IncidentLog)){ $IncidentLog=$Log }
-  $uploadedIncident=Publish-LogToGitHub $IncidentLog
-  $uploadedSelfHeal=Publish-LogToGitHub $Log
+  $uploadedLogs=@(Publish-AllLogsToGitHub)
   $incident=Read-LogTail $IncidentLog
-  $incidentLinks = @($uploadedIncident,$uploadedSelfHeal) | Where-Object { $_ } | ForEach-Object { "[GitHub log]($($_.HtmlUrl)) — raw: $($_.DownloadUrl)" } | Out-String
+  $incidentLinks = $uploadedLogs | ForEach-Object { "[GitHub log]($($_.HtmlUrl)) — raw: $($_.DownloadUrl)" } | Out-String
   if(-not $Resolved -and -not $issue){
     $body="## JAI automatic incident report`n`n**Status:** UNRESOLVED`n**Host:** $env:COMPUTERNAME`n**User:** $env:USERNAME`n**Time:** $(Get-Date -Format o)`n`n### GitHub logs`n$incidentLinks`n### Failure summary`n$FailureSummary`n`n### Bootstrap log`nPath: $IncidentLog`n`n````text`n$incident`n```` `n`n### Self-Heal log`nPath: $Log`n`n````text`n$(Read-LogTail $Log)`n```` `n`nThis issue was created automatically by JAI. Logs are retained locally until the incident is resolved."
     try { $payload=@{title="JAI Bootstrap Incident - $env:COMPUTERNAME";body=$body}|ConvertTo-Json -Depth 5; $issue=Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/binesheb/jai/issues" -Headers $headers -Body $payload -ContentType "application/json"; $script:State.IncidentIssueNumber=$issue.number; $script:State.IncidentLog=$IncidentLog; Save-State; Log "GitHub incident issue created: #$($issue.number)" } catch { Log "GitHub incident publishing failed: $($_.Exception.Message)" "WARN"; return }
