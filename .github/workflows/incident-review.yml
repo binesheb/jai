@@ -1,9 +1,8 @@
 name: JAI Incident Review
 
 on:
-  push:
-    paths:
-      - "logs/incidents/**"
+  issues:
+    types: [opened]
 
 permissions:
   contents: read
@@ -13,11 +12,6 @@ jobs:
   review:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout incident log
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
       - name: Rewrite incident log into a resolution checklist
         env:
           GH_TOKEN: ${{ github.token }}
@@ -64,9 +58,7 @@ jobs:
           if not checks:
               checks.append(("failure", "Review and resolve the reported bootstrap failure"))
 
-          current = json.loads(subprocess.check_output(
-              ["gh", "api", f"repos/binesheb/jai/issues/{issue}"], text=True
-          )).get("body") or ""
+          current = text
 
           start = "<!-- JAI_INCIDENT_CHECKLIST_START -->"
           end = "<!-- JAI_INCIDENT_CHECKLIST_END -->"
@@ -81,7 +73,7 @@ jobs:
           ]
           for _, label in checks:
               lines.append(f"- [ ] {label}")
-          lines += ["", f"Incident log: {path.as_posix()}", "", end]
+          lines += ["", "Source: JAI installer incident log stored in this Issue.", "", end]
           section = "\n".join(lines)
 
           if start in current and end in current:
@@ -96,4 +88,4 @@ jobs:
               "-f", f"body={current}"
           ], check=True)
 
-          print(f"Updated issue #{issue} from {path}")
+          print(f"Updated issue #{issue} from installer incident log")
