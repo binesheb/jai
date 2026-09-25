@@ -161,6 +161,8 @@ function Publish-GitHubIncident([bool]$Resolved) {
   if(-not $issue){ $issue=Get-OpenIncident }
   if(-not (Test-Path -LiteralPath $IncidentLog)){ $IncidentLog=$Log }
   $uploadedLogs=@(Publish-LogsForIncident $IncidentLog)
+  $selfHealUpload = Publish-LogToGitHub $Log
+  if($selfHealUpload){ Log "Self-Heal log uploaded to GitHub: $($selfHealUpload.Path)" }
   $incident=Read-LogTail $IncidentLog
   $incidentLinks = $uploadedLogs | ForEach-Object { "[GitHub log]($($_.HtmlUrl)) — raw: $($_.DownloadUrl)" } | Out-String
   if(-not $Resolved -and -not $issue){
