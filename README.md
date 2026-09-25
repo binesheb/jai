@@ -58,3 +58,15 @@ install.ps1             One-command Windows bootstrap
 docker-compose.yml      Core infrastructure
 .github/workflows/      Automated validation
 ```
+
+## One-command uninstall
+
+Run **PowerShell as Administrator**:
+
+```powershell
+irm https://raw.githubusercontent.com/binesheb/jai/main/uninstall.ps1 | iex
+```
+
+The uninstaller requires an explicit `REMOVE-JAI` confirmation, stops JAI Docker resources, removes JAI volumes/data/configuration/logs, removes JAI-specific scheduled tasks and environment variables, and removes Git/Docker Desktop **only when JAI recorded that it installed them**. Shared Windows components such as WSL are preserved.
+
+The installer records what it installed in `C:\\ProgramData\\JAI\\installation-state.json` so uninstall can avoid removing software that was already present on the PC.
