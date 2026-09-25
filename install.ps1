@@ -11,6 +11,12 @@ $Log = Join-Path $LogDir ("install-" + (Get-Date -Format "yyyyMMdd-HHmmss") + ".
 $StateFile = Join-Path $Root "installation-state.json"
 $StartTime = Get-Date
 $State = [ordered]@{ GitInstalledByJAI=$false; WslInstalledByJAI=$false; DockerInstalledByJAI=$false; WslDistro=$null; InstalledAt=(Get-Date -Format o); Host=$env:COMPUTERNAME }
+if (Test-Path $StateFile) {
+  try {
+    $saved = Get-Content $StateFile -Raw | ConvertFrom-Json
+    foreach ($p in $saved.PSObject.Properties) { $State[$p.Name] = $p.Value }
+  } catch { }
+}
 function SaveState { $State | ConvertTo-Json | Set-Content -Path $StateFile -Encoding UTF8 }
 $Step = 0
 
@@ -43,110 +49,25 @@ function Resolve-Tool([string]$Name, [string[]]$Candidates) {
   }
   return $null
 }
-function Run([string]$Name, [scriptblock]$Command) {
-  Log "COMMAND START: $Name"
+function Test-PendingReboot {
+  $keys = @(
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending",
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired"
+  )
+  foreach ($key in $keys) { if (Test-Path $key) { return $true } }
   try {
-    & $Command 2>&1 | ForEach-Object {
-      $text = $_.ToString()
-      Log "$Name :: $text"
-      Write-Host $text
-    }
-    if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "Exit code $LASTEXITCODE" }
-    Log "COMMAND COMPLETE: $Name"
-  } catch {
-    Log "COMMAND FAILED: $Name :: $($_.Exception.Message)" "ERROR"
-    throw
-  }
+    $session = Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" -Name PendingFileRenameOperations -ErrorAction Stop
+    if ($session.PendingFileRenameOperations) { return $true }
+  } catch {}
+  return $false
 }
-
-try {
-  Write-Host "========================================" -ForegroundColor Cyan
-  Write-Host " JAI - WINDOWS BOOTSTRAP" -ForegroundColor Cyan
-  Write-Host " Detailed installation logging enabled" -ForegroundColor Cyan
-  Write-Host "========================================" -ForegroundColor Cyan
-  Write-Host "Live log: $Log" -ForegroundColor Yellow
-  Log "JAI bootstrap started."
+function Wait-ForDocker([int]$TimeoutSeconds = 180) {
   Refresh-Path
-  Log "PowerShell: $($PSVersionTable.PSVersion)"
-  Log "User: $env:USERNAME"
-  Log "Host: $env:COMPUTERNAME"
-  Log "Working directory: $(Get-Location)"
-  $os = Get-CimInstance Win32_OperatingSystem
-  $cs = Get-CimInstance Win32_ComputerSystem
-  Log "OS: $($os.Caption) build $($os.BuildNumber)"
-  Log "Architecture: $($os.OSArchitecture)"
-  Log "RAM_GB: $([math]::Round($cs.TotalPhysicalMemory / 1GB, 1))"
-  Log "System drive free GB: $([math]::Round((Get-PSDrive C).Free / 1GB, 1))"
-  Log "Repository: https://github.com/$Repo"
-
-  StepStart "Detecting prerequisites"
-  foreach ($tool in @("winget","git","wsl","docker")) {
-    if (Has $tool) {
-      try { $v = & $tool --version 2>&1 | Select-Object -First 1; Log "$tool detected: $v"; Write-Host "[FOUND] $tool : $v" }
-      catch { Log "$tool detected but version check failed: $($_.Exception.Message)" "WARN" }
-    } else { Log "$tool not found."; Write-Host "[MISSING] $tool" -ForegroundColor Yellow }
-  }
-  StepEnd "Prerequisite detection"
-
-  if (-not (Has "winget")) {
-    throw "winget is required. Install Microsoft App Installer, then rerun JAI."
-  }
-
-  Refresh-Path
-  $GitExe = Resolve-Tool "git" @("$env:ProgramFiles\Git\cmd\git.exe","$env:ProgramFiles\Git\bin\git.exe","$env:LOCALAPPDATA\Programs\Git\cmd\git.exe")
-  if ($GitExe) {
-    Log "Git already installed and resolved to: $GitExe; skipping winget."
-  } else {
-    StepStart "Installing Git"
-    # winget can return a non-zero code when the package is already installed.
-    Run "winget Git.Git" { winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements --disable-interactivity }
-    Refresh-Path
-    $GitExe = Resolve-Tool "git" @("$env:ProgramFiles\Git\cmd\git.exe","$env:ProgramFiles\Git\bin\git.exe","$env:LOCALAPPDATA\Programs\Git\cmd\git.exe")
-    if (-not $GitExe) { throw "Git was not found after installation. Restart PowerShell and rerun the installer." }
-    $State.GitInstalledByJAI=$true; SaveState
-    Log "Git executable resolved to: $GitExe"
-    StepEnd "Installing Git"
-  }
-  Log "Using Git executable: $GitExe"
-
-  Refresh-Path
-  $wslExe = Resolve-Tool "wsl" @("$env:SystemRoot\System32\wsl.exe")
-  $wslReady = $false
-  if ($wslExe) {
-    Log "WSL executable found: $wslExe"
-    try {
-      $wslStatus = & $wslExe --status 2>&1
-      $wslExit = $LASTEXITCODE
-      $wslStatus | ForEach-Object { Log "wsl --status :: $($_.ToString())" }
-      if ($wslExit -eq 0) { $wslReady = $true; Log "WSL is installed and responding normally." }
-      else { Log "WSL executable exists but WSL is not fully installed/configured. Exit code: $wslExit" "WARN" }
-    } catch { Log "WSL status check failed: $($_.Exception.Message)" "WARN" }
-  }
-  if (-not $wslReady) {
-    StepStart "Installing/configuring WSL2"
-    if (-not $wslExe) { throw "wsl.exe could not be found. Windows WSL support may be unavailable." }
-    Log "Running: wsl --install --no-distribution"
-    try {
-      & $wslExe --install --no-distribution 2>&1 | ForEach-Object { Log "wsl --install :: $($_.ToString())"; Write-Host $_ }
-      $wslInstallExit = $LASTEXITCODE
-      Log "wsl --install exit code: $wslInstallExit"
-      $State.WslInstalledByJAI=$true; SaveState
-      if ($wslInstallExit -ne 0 -and $wslInstallExit -ne 3010) {
-        throw "WSL installation returned exit code $wslInstallExit."
-      }
-      Log "WSL installation/configuration requested. A Windows restart may be required." "WARN"
-    } catch { Log "WSL installation failed: $($_.Exception.Message)" "ERROR"; throw }
-    StepEnd "Installing/configuring WSL2"
-  } else {
-    Log "WSL already installed and healthy; skipping installation."
-  }
-
   if (-not (Has "docker")) {
     StepStart "Installing Docker Desktop"
-    Run "winget Docker.DockerDesktop" { winget install --id Docker.DockerDesktop -e --source winget --accept-source-agreements --accept-package-agreements }
+    Run "winget Docker.DockerDesktop" { winget install --id Docker.DockerDesktop -e --source winget --accept-source-agreements --accept-package-agreements --disable-interactivity }
     $State.DockerInstalledByJAI=$true; SaveState
     Refresh-Path
-    Log "Docker Desktop installation completed. The Docker CLI may require Docker Desktop to be started before it becomes available." "WARN"
     StepEnd "Installing Docker Desktop"
   } else { Log "Docker CLI already installed; skipping installation." }
 
@@ -166,20 +87,26 @@ try {
   Log "JAI source revision: $commit"
   StepEnd "Preparing JAI repository"
 
-  StepStart "Validating Docker"
-  Refresh-Path
-  if (-not (Has "docker")) {
-    $dockerCandidates = @("$env:ProgramFiles\Docker\Docker\resources\bin\docker.exe","$env:ProgramFiles\Docker\Docker\resources\bin\docker-compose.exe")
-    $docker = Resolve-Tool "docker" $dockerCandidates
-    if ($docker) { $env:Path = "$(Split-Path $docker);$env:Path"; Log "Docker executable resolved to: $docker" }
+  StepStart "Starting Docker Engine"
+  if (-not (Wait-ForDocker 180)) {
+    if (Test-PendingReboot) {
+      Log "Docker is not ready and Windows reports a pending reboot." "WARN"
+      Write-Host "RESTART REQUIRED: Docker/WSL needs Windows to restart. Run the same JAI command again after reboot." -ForegroundColor Yellow
+      exit 3010
+    }
+    throw "Docker Engine did not become ready within 180 seconds. Start Docker Desktop and rerun JAI."
   }
-  if (-not (Has "docker")) { throw "Docker CLI is unavailable after installation. Start Docker Desktop, then rerun JAI." }
-  Run "docker version" { docker version }
+  StepEnd "Starting Docker Engine"
+
+  StepStart "Configuring JAI infrastructure"
+  Ensure-ComposeEnv
   $compose = Join-Path $RepoDir "docker-compose.yml"
-  if (Test-Path $compose) {
-    Run "docker compose config" { Push-Location $RepoDir; try { docker compose config } finally { Pop-Location } }
-  } else { Log "docker-compose.yml not present yet; infrastructure startup will be added in a later bootstrap phase." "WARN" }
-  StepEnd "Validating Docker"
+  if (-not (Test-Path $compose)) { throw "docker-compose.yml is missing from the JAI repository." }
+  Run "docker compose config" { Push-Location $RepoDir; try { docker compose config } finally { Pop-Location } }
+  Run "docker compose pull" { Push-Location $RepoDir; try { docker compose pull } finally { Pop-Location } }
+  Run "docker compose up -d" { Push-Location $RepoDir; try { docker compose up -d } finally { Pop-Location } }
+  Run "docker compose ps" { Push-Location $RepoDir; try { docker compose ps } finally { Pop-Location } }
+  StepEnd "Configuring JAI infrastructure"
 
   $elapsed = (Get-Date) - $StartTime
   SaveState
@@ -188,6 +115,7 @@ try {
   Write-Host "JAI bootstrap completed successfully." -ForegroundColor Green
   Write-Host "Detailed log: $Log" -ForegroundColor Yellow
   Write-Host "Repository: $RepoDir"
+  Write-Host "Infrastructure: Docker Compose services started."
 } catch {
   Log "JAI bootstrap FAILED: $($_.Exception.Message)" "ERROR"
   Log "Stack: $($_.ScriptStackTrace)" "ERROR"
