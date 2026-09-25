@@ -12,6 +12,8 @@ irm https://raw.githubusercontent.com/binesheb/jai/main/install.ps1 | iex
 
 The command downloads the current JAI bootstrap from GitHub and executes it with PowerShell.
 
+The bootstrap prints detailed live progress to the PowerShell window and writes a timestamped full log under `C:\ProgramData\JAI\logs\`.
+
 The bootstrap is designed to:
 - detect the Windows environment;
 - verify/install required prerequisites;
