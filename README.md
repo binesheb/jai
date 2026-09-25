@@ -18,6 +18,27 @@ The bootstrap is **resumable**. If WSL, Docker Desktop, or Windows requires a re
 
 After prerequisites are ready, the bootstrap creates a local `.env` with a generated PostgreSQL password, validates Docker Compose, pulls the infrastructure images, starts PostgreSQL/pgvector and Redis, and records the deployed Git revision. The `.env` file stays local and is never committed.
 
+## Automatic GitHub incident reporting
+
+JAI can automatically create a GitHub Issue containing the failed bootstrap/self-heal logs. When the final health check passes, JAI comments on that same incident and closes it as resolved.
+
+Authentication is attempted in this order:
+
+1. `JAI_GITHUB_TOKEN`
+2. `GH_TOKEN`
+3. `GITHUB_TOKEN`
+4. an authenticated GitHub CLI session (`gh auth token`)
+
+For a machine that should report incidents automatically, authenticate GitHub CLI once:
+
+```powershell
+gh auth login
+```
+
+Then JAI can create, comment on, and close Issues without putting the token into JAI logs. If no GitHub authentication is available, JAI continues working normally and records a warning locally instead of failing the installation.
+
+Incident reports are deliberately truncated when necessary to stay within GitHub Issue size limits. Credentials are not intentionally written to the incident body.
+
 ## Automatic error recovery
 
 JAI includes a **Self-Heal engine**. When bootstrap, Docker, WSL, Compose, or service startup encounters a recoverable failure, JAI can automatically:
