@@ -101,14 +101,17 @@ function Test-Pending-Reboot {
 function Run-Command([string]$Name, [scriptblock]$Command) {
   Log "COMMAND START: $Name"
   try {
-    & $Command 2>&1 | ForEach-Object {
-      $text = $_.ToString()
+    $output = @(& $Command 2>&1)
+    $exitCode = $LASTEXITCODE
+
+    foreach ($item in $output) {
+      $text = $item.ToString()
       Log "$Name :: $text"
       Write-Host $text
     }
 
-    if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
-      throw "Exit code $LASTEXITCODE"
+    if ($exitCode -and $exitCode -ne 0) {
+      throw "Exit code $exitCode"
     }
 
     Log "COMMAND COMPLETE: $Name"
@@ -122,14 +125,19 @@ function Run-With-Retry([string]$Name, [scriptblock]$Command, [int]$Attempts = 3
   for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
     try {
       Log ("RETRYABLE COMMAND ATTEMPT {0}/{1}: {2}" -f $attempt, $Attempts, $Name)
-      & $Command 2>&1 | ForEach-Object {
-        $text = $_.ToString()
+      $output = @(& $Command 2>&1)
+      $exitCode = $LASTEXITCODE
+
+      foreach ($item in $output) {
+        $text = $item.ToString()
         Log "$Name :: $text"
         Write-Host $text
       }
-      if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
-        throw "Exit code $LASTEXITCODE"
+
+      if ($exitCode -and $exitCode -ne 0) {
+        throw "Exit code $exitCode"
       }
+
       Log "RETRYABLE COMMAND COMPLETE: $Name"
       return
     } catch {
@@ -393,6 +401,14 @@ try {
       } -Attempts 3 -DelaySeconds 5
     } catch {
       Log "Git fetch failed. Starting automatic repository recovery." "WARN"
+      try {
+        $gitStatus = @(& $GitExe -C $RepoDir status --porcelain=v1 -b 2>&1)
+        foreach ($line in $gitStatus) { Log "git status :: $($line.ToString())" "WARN" }
+        $gitHead = @(& $GitExe -C $RepoDir rev-parse --verify HEAD 2>&1)
+        foreach ($line in $gitHead) { Log "git head :: $($line.ToString())" "WARN" }
+      } catch {
+        Log "Unable to collect Git diagnostics: $($_.Exception.Message)" "WARN"
+      }
       $lockFiles = @(
         (Join-Path $RepoDir ".git\index.lock"),
         (Join-Path $RepoDir ".git\packed-refs.lock"),
