@@ -1007,7 +1007,10 @@ try {
     throw "JAI healthcheck script is missing."
   }
   Run-Command "JAI healthcheck" {
-    & $healthcheck
+    # Invoke through a child PowerShell process with an explicit process-scope
+    # execution-policy override. The installer must work on locked-down Windows
+    # hosts without requiring the operator to change machine policy.
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $healthcheck
   }
   Step-End "Running JAI health check"
 
