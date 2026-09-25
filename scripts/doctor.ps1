@@ -20,3 +20,12 @@ if (Test-Path (Join-Path $repo "docker-compose.yml")) {
   finally { Pop-Location }
 }
 Write-Host "Doctor log: $Log"
+
+
+Write-Host ""
+Write-Host "Automatic repair is available. Running JAI Self-Heal..." -ForegroundColor Cyan
+$selfHeal = Join-Path $Root "repo\scripts\selfheal.ps1"
+if (Test-Path $selfHeal) {
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $selfHeal
+  Write-Host "Self-Heal exit code: $LASTEXITCODE"
+} else { Write-Host "[WARN] Self-Heal script is not installed yet." -ForegroundColor Yellow }
