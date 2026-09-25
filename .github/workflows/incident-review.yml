@@ -82,7 +82,7 @@ jobs:
               body = body.rstrip() + "\n\n" + section + "\n"
 
           subprocess.run(
-              ["gh", "issue", "edit", issue, "--repo", repo, "--body", body, "--add-label", "ai-review"],
+              ["gh", "issue", "edit", issue, "--repo", repo, "--body", body],
               check=True
           )
           subprocess.run(
