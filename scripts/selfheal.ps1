@@ -41,7 +41,11 @@ function Save-State { if($script:State){ $script:State | ConvertTo-Json | Set-Co
 function Get-OpenIncident {
   $token=Get-GitHubToken; if([string]::IsNullOrWhiteSpace($token)){ return $null }
   $headers=@{Authorization="Bearer $token";Accept="application/vnd.github+json";"X-GitHub-Api-Version"="2022-11-28"}
-  try { $items=Invoke-RestMethod -Method Get -Uri "https://api.github.com/repos/binesheb/jai/issues?state=open&per_page=50" -Headers $headers; return ($items | Where-Object { $_.pull_request -eq $null -and $_.title -like "JAI Bootstrap Incident -*" } | Select-Object -First 1) } catch { Log "GitHub incident lookup failed: $($_.Exception.Message)" "WARN"; return $null }
+  try {
+    $items=Invoke-RestMethod -Method Get -Uri "https://api.github.com/repos/binesheb/jai/issues?state=open&per_page=50" -Headers $headers
+    $title="JAI Bootstrap Incident - $env:COMPUTERNAME"
+    return ($items | Where-Object { $_.pull_request -eq $null -and $_.title -eq $title } | Select-Object -First 1)
+  } catch { Log "GitHub incident lookup failed: $($_.Exception.Message)" "WARN"; return $null }
 }
 function Publish-GitHubIncident([bool]$Resolved) {
   $token=Get-GitHubToken; if([string]::IsNullOrWhiteSpace($token)){ Log "GitHub incident publishing skipped: no token or gh authentication found." "WARN"; return }
@@ -73,6 +77,33 @@ function Publish-GitHubIncident([bool]$Resolved) {
     try { $comment=@{body="JAI Self-Heal ran again but the environment is still not healthy. Latest self-heal log: $Log"}|ConvertTo-Json; Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/binesheb/jai/issues/$($issue.number)/comments" -Headers $headers -Body $comment -ContentType "application/json" | Out-Null } catch { Log "GitHub incident update failed: $($_.Exception.Message)" "WARN" }
   }
 }
+function Refresh-RepositoryFromArchive {
+  $tempRoot = Join-Path $env:TEMP ("jai-selfheal-" + [guid]::NewGuid().ToString("N"))
+  $zip = Join-Path $env:TEMP ("jai-selfheal-" + [guid]::NewGuid().ToString("N") + ".zip")
+  try {
+    New-Item -ItemType Directory -Force -Path $tempRoot | Out-Null
+    Log "Git transport failed. Falling back to the GitHub source archive." "WARN"
+    Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/binesheb/jai/archive/refs/heads/main.zip" -OutFile $zip
+    if(-not(Test-Path -LiteralPath $zip) -or (Get-Item -LiteralPath $zip).Length -lt 1024){
+      throw "GitHub source archive download was empty or incomplete."
+    }
+    Expand-Archive -LiteralPath $zip -DestinationPath $tempRoot -Force
+    $source=Get-ChildItem -LiteralPath $tempRoot -Directory | Select-Object -First 1
+    if(-not $source){ throw "GitHub source archive did not contain a repository directory." }
+    Log "Refreshing working tree from GitHub source archive."
+    & robocopy $source.FullName $Repo /E /XD ".git" ".github" /R:2 /W:2 /NFL /NDL /NJH /NJS /NP 2>&1 | ForEach-Object { Log "archive refresh :: $($_.ToString())" }
+    if($LASTEXITCODE -gt 7){ throw "robocopy returned exit code $LASTEXITCODE" }
+    Log "Repository source refreshed from GitHub archive."
+    return $true
+  } catch {
+    Log "GitHub source archive recovery failed: $($_.Exception.Message)" "WARN"
+    return $false
+  } finally {
+    Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
 function Refresh-Path {
   $env:Path="$([Environment]::GetEnvironmentVariable('Path','Machine'));$([Environment]::GetEnvironmentVariable('Path','User'))"
 }
@@ -98,10 +129,12 @@ $fixed=$false
 if(Test-Path (Join-Path $Repo ".git")){
   Push-Location $Repo
   try {
-    Invoke-Step "Refreshing JAI source" {
+    if(-not (Invoke-Step "Refreshing JAI source" {
       git -c http.version=HTTP/1.1 -c credential.interactive=never fetch --all --prune
       git -c http.version=HTTP/1.1 -c credential.interactive=never pull --ff-only
-    } | Out-Null
+    })){
+      if(Refresh-RepositoryFromArchive){ $fixed=$true }
+    }
   } finally { Pop-Location }
 }
 
@@ -143,8 +176,12 @@ $health=Join-Path $Repo "scripts\healthcheck.ps1"
 $healthPassed=$false
 if(Test-Path $health){
   & $health
-  if($LASTEXITCODE -eq 0){ Log "SELF-HEAL SUCCESS: JAI health check passed."; $healthPassed=$true }
-  Log "SELF-HEAL could not fully repair JAI. Manual diagnosis may be required." "WARN"
+  if($LASTEXITCODE -eq 0){
+    Log "SELF-HEAL SUCCESS: JAI health check passed."
+    $healthPassed=$true
+  } else {
+    Log "SELF-HEAL could not fully repair JAI. Manual diagnosis may be required." "WARN"
+  }
 }
 if($healthPassed){
   Publish-GitHubIncident $true
