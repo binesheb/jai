@@ -385,11 +385,59 @@ try {
       & $GitExe clone "https://github.com/$Repo.git" $RepoDir
     }
   } else {
-    Run-Command "git fetch" {
-      & $GitExe -C $RepoDir fetch --all --prune
+    # Existing checkout: recover automatically from stale locks, broken refs,
+    # divergence, or a transient fetch failure before giving up.
+    try {
+      Run-With-Retry "git fetch" {
+        & $GitExe -C $RepoDir fetch origin main --prune
+      } -Attempts 3 -DelaySeconds 5
+    } catch {
+      Log "Git fetch failed. Starting automatic repository recovery." "WARN"
+      $lockFiles = @(
+        (Join-Path $RepoDir ".git\index.lock"),
+        (Join-Path $RepoDir ".git\packed-refs.lock"),
+        (Join-Path $RepoDir ".git\FETCH_HEAD.lock"),
+        (Join-Path $RepoDir ".git\refs\remotes\origin\main.lock")
+      )
+      foreach ($lock in $lockFiles) {
+        if (Test-Path $lock) {
+          Log "Removing stale Git lock: $lock" "WARN"
+          Remove-Item -Force $lock -ErrorAction SilentlyContinue
+        }
+      }
+
+      Run-Command "git remote repair" {
+        & $GitExe -C $RepoDir remote set-url origin "https://github.com/$Repo.git"
+      }
+
+      try {
+        Run-Command "git fsck" {
+          & $GitExe -C $RepoDir fsck --full
+        }
+      } catch {
+        Log "Git fsck reported repository problems; attempting clean re-clone." "WARN"
+      }
+
+      try {
+        Run-With-Retry "git fetch recovery" {
+          & $GitExe -C $RepoDir fetch origin main --prune
+        } -Attempts 2 -DelaySeconds 5
+      } catch {
+        $backup = "$RepoDir.recovery-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+        Log "Repository recovery fetch failed. Moving checkout to $backup and cloning clean." "WARN"
+        Move-Item -LiteralPath $RepoDir -Destination $backup -Force
+        Run-Command "git clean clone" {
+          & $GitExe clone "https://github.com/$Repo.git" $RepoDir
+        }
+      }
     }
-    Run-Command "git pull --ff-only" {
-      & $GitExe -C $RepoDir pull --ff-only
+
+    # The installer is authoritative: deploy the repository's current main branch.
+    Run-Command "git checkout main" {
+      & $GitExe -C $RepoDir checkout -B main origin/main
+    }
+    Run-Command "git reset --hard origin/main" {
+      & $GitExe -C $RepoDir reset --hard origin/main
     }
   }
 
