@@ -42,6 +42,17 @@ Log "Host: $env:COMPUTERNAME"
 Log "Repository: $Repo"
 $fixed=$false
 
+# Refresh JAI code first, but never discard local changes.
+if(Test-Path (Join-Path $Repo ".git")){
+  Push-Location $Repo
+  try {
+    Invoke-Step "Refreshing JAI source" {
+      git fetch --all --prune
+      git pull --ff-only
+    } | Out-Null
+  } finally { Pop-Location }
+}
+
 Refresh-Path
 if(-not(Docker-Ready)){
   if(Invoke-Step "Restarting Docker Desktop" {
