@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   review:
-    if: startsWith(github.event.issue.title, 'JAI Bootstrap Incident -')
+    if: github.event.issue.state == 'open' && startsWith(github.event.issue.title, 'JAI Bootstrap Incident -')
     runs-on: ubuntu-latest
     steps:
       - name: Rewrite incident log into a resolution checklist
