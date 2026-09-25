@@ -278,7 +278,7 @@ if(Docker-Ready -and (Test-Path (Join-Path $Repo "docker-compose.yml"))){
   try {
     Invoke-Step "Checking Docker engine" { docker info } | Out-Null
     for($i=1;$i-le 3;$i++){
-      if(Invoke-Step "Pulling JAI images (attempt $i/3)" { docker compose pull }){ $fixed=$true; break }
+      if(Invoke-Step "Pulling JAI images (attempt $i/3)" { docker compose --progress plain pull }){ $fixed=$true; break }
       Start-Sleep (10*$i)
     }
     if(Invoke-Step "Recreating JAI services" { docker compose up -d --remove-orphans }){ $fixed=$true }
