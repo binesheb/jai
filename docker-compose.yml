@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:0.8.6-pg16
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${JAI_POSTGRES_DB:-jai}
