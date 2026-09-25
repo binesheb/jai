@@ -14,6 +14,10 @@ The command downloads the current JAI bootstrap from GitHub and executes it with
 
 The bootstrap prints detailed live progress to the PowerShell window and writes a timestamped full log under `C:\ProgramData\JAI\logs\`.
 
+The bootstrap is **resumable**. If WSL, Docker Desktop, or Windows requires a restart, JAI stops cleanly, preserves installation state, and tells you to restart and run the same command again. It records which prerequisites JAI installed so the uninstaller can avoid removing software that was already present.
+
+After prerequisites are ready, the bootstrap creates a local `.env` with a generated PostgreSQL password, validates Docker Compose, pulls the infrastructure images, starts PostgreSQL/pgvector and Redis, and records the deployed Git revision. The `.env` file stays local and is never committed.
+
 The bootstrap is designed to:
 - detect the Windows environment;
 - verify/install required prerequisites;
