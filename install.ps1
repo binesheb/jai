@@ -431,10 +431,23 @@ try {
     try { docker compose config } finally { Pop-Location }
   }
 
-  Run-With-Retry "docker compose pull" {
-    Push-Location $RepoDir
-    try { docker compose pull } finally { Pop-Location }
-  } 4 15
+  try {
+    Run-With-Retry "docker compose pull" {
+      Push-Location $RepoDir
+      try { docker compose pull } finally { Pop-Location }
+    } 4 15
+  } catch {
+    Log "Docker image pull still failing after normal retries. Starting JAI Self-Heal." "WARN"
+    $selfHeal = Join-Path $RepoDir "scripts\selfheal.ps1"
+    if (Test-Path -LiteralPath $selfHeal) {
+      & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $selfHeal
+      if ($LASTEXITCODE -ne 0) {
+        throw "Docker image pull failed and JAI Self-Heal could not fully recover the environment."
+      }
+    } else {
+      throw
+    }
+  }
 
   Run-Command "docker compose up -d" {
     Push-Location $RepoDir
@@ -471,8 +484,21 @@ try {
   Log "JAI bootstrap FAILED: $($_.Exception.Message)" "ERROR"
   Log "Stack: $($_.ScriptStackTrace)" "ERROR"
   Write-Host ""
-  Write-Host "JAI bootstrap FAILED." -ForegroundColor Red
+  Write-Host "JAI bootstrap FAILED. Attempting automatic recovery..." -ForegroundColor Yellow
+  $selfHeal = Join-Path $RepoDir "scripts\selfheal.ps1"
+  if (Test-Path -LiteralPath $selfHeal) {
+    Log "Launching JAI Self-Heal after bootstrap failure."
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $selfHeal
+    $healExit = $LASTEXITCODE
+    if ($healExit -eq 0) {
+      Log "JAI Self-Heal repaired the environment." "INFO"
+      Write-Host "JAI Self-Heal repaired the environment. Rerun the same JAI command to complete bootstrap." -ForegroundColor Green
+      Write-Host "Self-heal log: $LogDir" -ForegroundColor Yellow
+      exit 0
+    }
+    Log "JAI Self-Heal exit code: $healExit" "WARN"
+  }
   Write-Host "Detailed log: $Log" -ForegroundColor Yellow
-  Write-Host "Send this log if you want me to diagnose the failure."
+  Write-Host "JAI Self-Heal log is also stored under C:\ProgramData\JAI\logs\"
   exit 1
 }
