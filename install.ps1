@@ -897,9 +897,26 @@ try {
     }
   }
 
-  Run-Command "docker compose up -d" {
-    Push-Location $RepoDir
-    try { docker compose up -d } finally { Pop-Location }
+  try {
+    Run-Command "docker compose up -d" {
+      Push-Location $RepoDir
+      try { docker compose up -d } finally { Pop-Location }
+    }
+  } catch {
+    Log "docker compose up -d failed. Collecting Docker volume/container diagnostics before recovery." "ERROR"
+    try {
+      $volumes = & docker volume ls --format "{{.Name}} | {{.Driver}}" 2>&1
+      $volumes | ForEach-Object { Log "DOCKER VOLUME :: $($_.ToString())" }
+    } catch { Log "Docker volume listing failed: $($_.Exception.Message)" "WARN" }
+    try {
+      $inspect = & docker volume inspect repo_postgres_data repo_redis_data 2>&1
+      $inspect | ForEach-Object { Log "DOCKER VOLUME INSPECT :: $($_.ToString())" }
+    } catch { Log "Docker required-volume inspect failed: $($_.Exception.Message)" "WARN" }
+    try {
+      $containers = & docker ps -a --format "{{.Names}} | {{.Status}} | {{.Image}} | {{.Mounts}}" 2>&1
+      $containers | ForEach-Object { Log "DOCKER CONTAINER SNAPSHOT :: $($_.ToString())" }
+    } catch { Log "Docker container snapshot failed: $($_.Exception.Message)" "WARN" }
+    throw
   }
 
   Run-Command "docker compose ps" {
