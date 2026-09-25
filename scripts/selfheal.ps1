@@ -281,6 +281,11 @@ if(Docker-Ready -and (Test-Path (Join-Path $Repo "docker-compose.yml"))){
       if(Invoke-Step "Pulling JAI images (attempt $i/3)" { docker compose --progress plain pull }){ $fixed=$true; break }
       Start-Sleep (10*$i)
     }
+    # If Compose still fails, pull each image directly so registry/proxy errors are
+    # visible and retained in the self-heal diagnostic log.
+    foreach($image in @("redis:7-alpine","pgvector/pgvector:0.8.6-pg16")){
+      Invoke-Step "Direct image diagnostic: $image" { docker pull $image } | Out-Null
+    }
     if(Invoke-Step "Recreating JAI services" { docker compose up -d --remove-orphans }){ $fixed=$true }
   } finally { Pop-Location }
 }
