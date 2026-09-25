@@ -32,6 +32,21 @@ Self-Heal reads the incident log, attempts recovery, runs the health check, and 
 
 The `logs` directory itself remains available for future diagnostics. Failed logs are not committed to the repository and are not stored in Git because `logs/` is intentionally ignored.
 
+## GitHub incident review workflow
+
+When the installer cannot complete, it creates a **JAI Bootstrap Incident** Issue containing the detailed local log. GitHub Actions automatically reads that incident, rewrites the detected failure areas into a **JAI Resolution Checklist**, and keeps the checklist attached to the same incident.
+
+The intended lifecycle is:
+
+1. **PC writes the detailed log** under `C:\\ProgramData\\JAI\\logs\\`.
+2. **Installer publishes the failure log to a GitHub Issue** after a failed bootstrap.
+3. **GitHub Actions converts the log into actionable checklist items** such as Git, WSL, Docker, Compose, authentication and health checks.
+4. **JAI Self-Heal works through the failure** and posts progress to the same Issue.
+5. **A successful health check marks the generated checklist complete**, records the resolution, and closes the Issue.
+6. **The local incident/self-heal logs are removed only after the resolution is recorded remotely.**
+
+This keeps GitHub as the review trail while keeping the full live log on the PC until the incident is actually resolved.
+
 ## Automatic GitHub incident reporting
 
 JAI can automatically create a GitHub Issue containing the failed bootstrap/self-heal logs. When the final health check passes, JAI comments on that same incident and closes it as resolved.
