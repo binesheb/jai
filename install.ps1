@@ -615,11 +615,17 @@ try {
     }
 
     # The installer is authoritative: deploy the repository's current main branch.
-    Run-Command "git checkout main" {
-      & $GitExe -C $RepoDir checkout -B main origin/main
-    }
-    Run-Command "git reset --hard origin/main" {
-      & $GitExe -C $RepoDir reset --hard origin/main
+    # Archive fallback deployments intentionally have no .git directory, so they
+    # must not be sent through Git checkout/reset commands.
+    if (Test-Path -LiteralPath (Join-Path $RepoDir ".git")) {
+      Run-Command "git checkout main" {
+        & $GitExe -C $RepoDir checkout -B main origin/main
+      }
+      Run-Command "git reset --hard origin/main" {
+        & $GitExe -C $RepoDir reset --hard origin/main
+      }
+    } else {
+      Log "Repository was deployed from the GitHub source archive; skipping Git checkout/reset."
     }
   }
 
