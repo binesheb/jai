@@ -673,6 +673,12 @@ try {
         }
         try {
           Run-With-Retry "git clean clone" {
+            # A failed git clone can leave a partial destination behind. Remove that
+            # partial checkout before each retry so the next clone cannot fail with
+            # "destination path already exists and is not an empty directory".
+            if (Test-Path -LiteralPath $RepoDir) {
+              Remove-Item -LiteralPath $RepoDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
             & $GitExe clone "https://github.com/$Repo.git" $RepoDir
           } -Attempts 2 -DelaySeconds 5
         } catch {
