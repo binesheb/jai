@@ -828,10 +828,33 @@ try {
     try { docker compose config } finally { Pop-Location }
   }
 
+  # Capture registry/network diagnostics before image pulls. Docker Compose's
+  # interactive progress output can otherwise hide the real registry error.
   try {
-    Run-With-Retry "docker compose pull" {
+    $registryHost = "registry-1.docker.io"
+    $registryDns = Resolve-DnsName $registryHost -ErrorAction Stop
+    $registryDns | ForEach-Object { Log "REGISTRY DNS :: $($_.Name) -> $($_.IPAddress)" }
+  } catch {
+    Log "REGISTRY DNS FAILED: $($_.Exception.Message)" "WARN"
+  }
+  try {
+    $tcp = Test-NetConnection "registry-1.docker.io" -Port 443 -WarningAction SilentlyContinue
+    Log "REGISTRY TCP :: Host=registry-1.docker.io Port=443 TcpTestSucceeded=$($tcp.TcpTestSucceeded) RemoteAddress=$($tcp.RemoteAddress)"
+  } catch {
+    Log "REGISTRY TCP TEST FAILED: $($_.Exception.Message)" "WARN"
+  }
+  try {
+    $registryHttp = Invoke-WebRequest "https://registry-1.docker.io/v2/" -Method Head -UseBasicParsing -TimeoutSec 20 -ErrorAction Stop
+    Log "REGISTRY HTTPS :: StatusCode=$($registryHttp.StatusCode) StatusDescription=$($registryHttp.StatusDescription)"
+  } catch {
+    $status = $_.Exception.Response.StatusCode.value__
+    Log "REGISTRY HTTPS :: StatusCode=$status Error=$($_.Exception.Message)" "WARN"
+  }
+
+  try {
+    Run-With-Retry "docker compose --progress plain pull" {
       Push-Location $RepoDir
-      try { docker compose pull } finally { Pop-Location }
+      try { docker compose --progress plain pull } finally { Pop-Location }
     } 4 15
   } catch {
     Log "Docker image pull still failing after normal retries. Starting JAI Self-Heal." "WARN"
