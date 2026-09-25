@@ -2,10 +2,9 @@ name: JAI Incident Review
 
 on:
   issues:
-    types: [opened]
+    types: [opened, reopened, edited]
 
 permissions:
-  contents: read
   issues: write
 
 jobs:
@@ -17,14 +16,21 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
-          ISSUE_BODY: ${{ github.event.issue.body }}
+          GH_REPO: ${{ github.repository }}
         shell: python
         run: |
-          import os, re, subprocess
+          import os
+          import re
+          import subprocess
 
           issue = os.environ["ISSUE_NUMBER"]
-          text = os.environ.get("ISSUE_BODY", "")
-          lower = text.lower()
+          repo = os.environ["GH_REPO"]
+
+          body = subprocess.check_output(
+              ["gh", "issue", "view", issue, "--repo", repo, "--json", "body", "--jq", ".body"],
+              text=True
+          )
+          lower = body.lower()
 
           checks = []
           def add(key, label):
@@ -55,26 +61,26 @@ jobs:
               start,
               "## JAI Resolution Checklist",
               "",
-              "GitHub Actions generated this checklist from the JAI installer log in this Issue.",
-              "Each item is independently reviewable and should be cleared by Self-Heal, a commit, or a pull request.",
+              "Generated automatically from the incident log. Self-Heal should clear these items as repairs succeed.",
               ""
           ]
           for _, label in checks:
               lines.append(f"- [ ] {label}")
-          lines += ["", "Source: JAI installer incident log stored in this Issue.", "", end]
+          lines += [
+              "",
+              "The incident remains open until JAI reports a successful final health check.",
+              "",
+              end
+          ]
           section = "\n".join(lines)
 
-          current = text
-          if start in current and end in current:
-              current = re.sub(re.escape(start) + r".*?" + re.escape(end),
-                               lambda _: section, current, flags=re.S)
+          if start in body and end in body:
+              body = re.sub(re.escape(start) + r".*?" + re.escape(end), section, body, flags=re.S)
           else:
-              current = current.rstrip() + "\n\n" + section + "\n"
+              body = body.rstrip() + "\n\n" + section + "\n"
 
-          subprocess.run([
-              "gh", "api", "--method", "PATCH",
-              f"repos/binesheb/jai/issues/{issue}",
-              "-f", f"body={current}"
-          ], check=True)
-
+          subprocess.run(
+              ["gh", "issue", "edit", issue, "--repo", repo, "--body", body],
+              check=True
+          )
           print(f"Updated issue #{issue} with a machine-generated resolution checklist.")
