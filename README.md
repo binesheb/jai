@@ -16,6 +16,8 @@ The bootstrap prints detailed live progress to the PowerShell window and writes 
 
 The bootstrap is **resumable**. If WSL, Docker Desktop, or Windows requires a restart, JAI stops cleanly, preserves installation state, and tells you to restart and run the same command again. It records which prerequisites JAI installed so the uninstaller can avoid removing software that was already present.
 
+If Git transport (`git clone`/`git fetch`) fails because of a transient network, proxy, TLS, or Git transport problem, the bootstrap automatically retries and then falls back to downloading the public GitHub `main` source archive. Archive deployments remain fully usable for the bootstrap and health checks, and the current remote commit SHA is recorded when GitHub's API is reachable.
+
 After prerequisites are ready, the bootstrap creates a local `.env` with a generated PostgreSQL password, validates Docker Compose, pulls the infrastructure images, starts PostgreSQL/pgvector and Redis, and records the deployed Git revision. The `.env` file stays local and is never committed.
 
 ## Failure logs and automatic incident lifecycle
