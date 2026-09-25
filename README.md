@@ -18,6 +18,29 @@ The bootstrap is **resumable**. If WSL, Docker Desktop, or Windows requires a re
 
 After prerequisites are ready, the bootstrap creates a local `.env` with a generated PostgreSQL password, validates Docker Compose, pulls the infrastructure images, starts PostgreSQL/pgvector and Redis, and records the deployed Git revision. The `.env` file stays local and is never committed.
 
+## Automatic error recovery
+
+JAI includes a **Self-Heal engine**. When bootstrap, Docker, WSL, Compose, or service startup encounters a recoverable failure, JAI can automatically:
+
+- refresh the Windows environment PATH;
+- restart Docker Desktop when the engine is unavailable;
+- restart the WSL runtime when WSL is unhealthy;
+- re-check the Docker engine;
+- retry Docker image pulls with progressive delays;
+- recreate JAI services with `docker compose up -d --remove-orphans`;
+- run the full JAI health check again;
+- write a separate timestamped self-heal log.
+
+Run Self-Heal manually from an Administrator PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/binesheb/jai/main/scripts/selfheal.ps1 | iex
+```
+
+Self-Heal is deliberately conservative: it repairs JAI's own runtime and containers, but does not blindly uninstall software, delete unrelated Docker data, or modify business data.
+
+`C:\\ProgramData\\JAI\\logs\\` contains the bootstrap, health-check, doctor and self-heal logs.
+
 The bootstrap is designed to:
 - detect the Windows environment;
 - verify/install required prerequisites;
