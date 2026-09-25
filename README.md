@@ -34,13 +34,7 @@ The `logs` directory itself remains available for future diagnostics. Failed log
 
 JAI can automatically create a GitHub Issue containing the failed bootstrap/self-heal logs. When the final health check passes, JAI comments on that same incident and closes it as resolved.
 
-During installation JAI automatically installs the GitHub CLI if it is missing, checks whether GitHub is already authenticated, and asks:
-
-```text
-Authenticate GitHub now? [Y/N]:
-```
-
-If you choose **Y**, JAI starts the GitHub CLI browser/device authentication flow:
+During installation JAI automatically installs the GitHub CLI if it is missing and checks whether GitHub is already authenticated. If authentication is missing, JAI automatically starts the GitHub CLI browser/device authentication flow. There is no Y/N confirmation prompt. Complete the GitHub authorization in the browser/device flow when requested.
 
 ```powershell
 gh auth login --hostname github.com --git-protocol https --web
@@ -48,7 +42,7 @@ gh auth login --hostname github.com --git-protocol https --web
 
 After login, JAI verifies that the authenticated account can write to `binesheb/jai`. The GitHub username and authentication status are recorded in `installation-state.json`; access tokens are never written to the JAI logs or repository.
 
-If you choose **N**, or authentication cannot be completed, installation continues normally and JAI records a warning. Automatic GitHub incident reporting becomes available as soon as the GitHub CLI is authenticated.
+If authentication cannot be completed, installation continues normally and JAI records a warning. To deliberately skip GitHub authentication, set `JAI_SKIP_GITHUB_AUTH=1` before running the installer. Automatic GitHub incident reporting becomes available as soon as the GitHub CLI is authenticated.
 
 JAI can also use `JAI_GITHUB_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN` for non-interactive environments. These values are read only from the environment and are never intentionally logged.
 
