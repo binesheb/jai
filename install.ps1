@@ -15,6 +15,9 @@ $State = [ordered]@{
   GitInstalledByJAI = $false
   WslInstalledByJAI = $false
   DockerInstalledByJAI = $false
+  GitHubCliInstalledByJAI = $false
+  GitHubAuthenticated = $false
+  GitHubUser = $null
   WslDistro = $null
   IncidentIssueNumber = $null
   IncidentLog = $null
@@ -46,6 +49,73 @@ function Get-GitHubToken {
   $gh = Get-Command gh -ErrorAction SilentlyContinue
   if ($gh) { try { $v = & $gh.Source auth token 2>$null; if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($v)) { return ($v | Select-Object -First 1) } } catch {} }
   return $null
+}
+function Ensure-GitHubAuthentication {
+  Refresh-Path
+  $gh = Get-Command gh -ErrorAction SilentlyContinue
+  if (-not $gh) {
+    Step-Start "Installing GitHub CLI"
+    Run-Command "winget GitHub.cli" { winget install --id GitHub.cli -e --source winget --accept-source-agreements --accept-package-agreements --disable-interactivity }
+    Refresh-Path
+    $gh = Get-Command gh -ErrorAction SilentlyContinue
+    if (-not $gh) { throw "GitHub CLI was not found after installation." }
+    $State.GitHubCliInstalledByJAI = $true
+    Save-State
+    Step-End "Installing GitHub CLI"
+  } else { Log "GitHub CLI already installed and resolved to: $($gh.Source)." }
+
+  $authenticated = $false
+  try { & $gh.Source auth status --hostname github.com 2>&1 | ForEach-Object { Log "gh auth status :: $($_.ToString())" }; $authenticated = ($LASTEXITCODE -eq 0) } catch { $authenticated = $false }
+
+  if (-not $authenticated) {
+    Write-Host ""
+    Write-Host "========================================" -ForegroundColor Cyan
+    Write-Host " JAI - GITHUB AUTHENTICATION" -ForegroundColor Cyan
+    Write-Host "========================================" -ForegroundColor Cyan
+    Write-Host "JAI uses GitHub to report failed installations, upload diagnostics as Issues, and track Self-Heal."
+    Write-Host "GitHub authentication is optional for installation, but recommended for automatic error reporting." -ForegroundColor Yellow
+    Write-Host ""
+    $answer = Read-Host "Authenticate GitHub now? [Y/N]"
+    if ($answer -match "^[Yy]$") {
+      Log "Starting interactive GitHub CLI authentication."
+      Write-Host "A browser window may open. Complete the GitHub sign-in and authorization there." -ForegroundColor Yellow
+      try {
+        & $gh.Source auth login --hostname github.com --git-protocol https --web
+        if ($LASTEXITCODE -ne 0) { throw "GitHub CLI authentication returned exit code $LASTEXITCODE." }
+      } catch {
+        Log "GitHub authentication failed: $($_.Exception.Message)" "WARN"
+        Write-Host "GitHub authentication was not completed. JAI will continue without automatic incident reporting." -ForegroundColor Yellow
+      }
+    } else {
+      Log "User declined GitHub authentication. Automatic incident reporting will remain unavailable until gh is authenticated." "WARN"
+    }
+  }
+
+  try { & $gh.Source auth status --hostname github.com 2>&1 | ForEach-Object { Log "gh auth status :: $($_.ToString())" }; $authenticated = ($LASTEXITCODE -eq 0) } catch { $authenticated = $false }
+  if ($authenticated) {
+    try {
+      $user = (& $gh.Source api user --jq .login 2>$null | Select-Object -First 1)
+      if (-not [string]::IsNullOrWhiteSpace($user)) { $State.GitHubUser = $user.Trim(); Log "GitHub authenticated as: $($State.GitHubUser)" }
+      $repoAccess = (& $gh.Source api "repos/$Repo" --jq ".permissions.push" 2>$null | Select-Object -First 1)
+      if ($repoAccess -eq "true") {
+        $State.GitHubAuthenticated = $true
+        Save-State
+        Log "GitHub repository write access verified for $Repo."
+        Write-Host "[OK] GitHub authentication and repository write access verified." -ForegroundColor Green
+      } else {
+        $State.GitHubAuthenticated = $false
+        Save-State
+        Log "GitHub login succeeded, but write access to $Repo could not be verified." "WARN"
+        Write-Host "[WARN] GitHub login succeeded, but write access to $Repo was not verified." -ForegroundColor Yellow
+      }
+    } catch {
+      $State.GitHubAuthenticated = $false; Save-State
+      Log "GitHub access verification failed: $($_.Exception.Message)" "WARN"
+    }
+  } else {
+    $State.GitHubAuthenticated = $false; Save-State
+    Log "GitHub CLI is not authenticated. Continuing without GitHub incident reporting." "WARN"
+  }
 }
 function Read-LogText([string]$Path,[int]$MaxChars=50000) {
   if (-not (Test-Path -LiteralPath $Path)) { return "(log file not found: $Path)" }
@@ -328,6 +398,9 @@ try {
   }
 
   Log "Using Git executable: $GitExe"
+
+  # GitHub CLI / incident reporting authentication
+  Ensure-GitHubAuthentication
 
   # WSL
   Refresh-Path
