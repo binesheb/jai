@@ -306,6 +306,7 @@ function Test-Pending-Reboot {
 function Run-Command([string]$Name, [scriptblock]$Command) {
   Log "COMMAND START: $Name"
   try {
+    $global:LASTEXITCODE = 0
     $output = @(& $Command 2>&1)
     $exitCode = $LASTEXITCODE
 
@@ -330,6 +331,10 @@ function Run-With-Retry([string]$Name, [scriptblock]$Command, [int]$Attempts = 3
   for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
     try {
       Log ("RETRYABLE COMMAND ATTEMPT {0}/{1}: {2}" -f $attempt, $Attempts, $Name)
+      # Reset native exit state before invoking the command. PowerShell cmdlets and
+      # native commands share LASTEXITCODE, so a stale value can falsely fail a
+      # successful operation such as git fetch or Invoke-WebRequest.
+      $global:LASTEXITCODE = 0
       $output = @(& $Command 2>&1)
       $exitCode = $LASTEXITCODE
 
@@ -655,6 +660,10 @@ try {
         $backup = "$RepoDir.recovery-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
         Log "Repository recovery fetch failed. Moving checkout to $backup and cloning clean." "WARN"
         Move-Item -LiteralPath $RepoDir -Destination $backup -Force
+        if (Test-Path -LiteralPath $RepoDir) {
+          Log "Repository directory still exists after recovery move; removing it before clean clone." "WARN"
+          Remove-Item -LiteralPath $RepoDir -Recurse -Force
+        }
         try {
           Run-With-Retry "git clean clone" {
             & $GitExe clone "https://github.com/$Repo.git" $RepoDir
