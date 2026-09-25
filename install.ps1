@@ -28,7 +28,21 @@ function StepEnd([string]$Name) {
   Log "STEP $script:Step COMPLETE: $Name"
   Write-Host "[OK] $Name" -ForegroundColor Green
 }
+function Refresh-Path {
+  $machine = [Environment]::GetEnvironmentVariable("Path","Machine")
+  $user = [Environment]::GetEnvironmentVariable("Path","User")
+  $env:Path = "$machine;$user"
+  Log "PATH refreshed from Machine + User environment."
+}
 function Has([string]$Name) { return [bool](Get-Command $Name -ErrorAction SilentlyContinue) }
+function Resolve-Tool([string]$Name, [string[]]$Candidates) {
+  $cmd = Get-Command $Name -ErrorAction SilentlyContinue
+  if ($cmd) { return $cmd.Source }
+  foreach ($candidate in $Candidates) {
+    if (Test-Path $candidate) { return $candidate }
+  }
+  return $null
+}
 function Run([string]$Name, [scriptblock]$Command) {
   Log "COMMAND START: $Name"
   try {
@@ -81,8 +95,16 @@ try {
     StepStart "Installing Git"
     Run "winget Git.Git" { winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements }
     $State.GitInstalledByJAI=$true; SaveState
+    Refresh-Path
+    $git = Resolve-Tool "git" @("$env:ProgramFiles\Git\cmd\git.exe","$env:ProgramFiles\Git\bin\git.exe","$env:LOCALAPPDATA\Programs\Git\cmd\git.exe")
+    if (-not $git) { throw "Git was installed by winget but git.exe is not visible. Restart PowerShell and rerun the installer." }
+    Log "Git executable resolved to: $git"
     StepEnd "Installing Git"
   } else { Log "Git already installed; skipping installation." }
+  Refresh-Path
+  $GitExe = Resolve-Tool "git" @("$env:ProgramFiles\Git\cmd\git.exe","$env:ProgramFiles\Git\bin\git.exe","$env:LOCALAPPDATA\Programs\Git\cmd\git.exe")
+  if (-not $GitExe) { throw "Git is required but git.exe could not be located." }
+  Log "Using Git executable: $GitExe"
 
   if (-not (Has "wsl")) {
     StepStart "Installing WSL"
@@ -96,6 +118,8 @@ try {
     StepStart "Installing Docker Desktop"
     Run "winget Docker.DockerDesktop" { winget install --id Docker.DockerDesktop -e --source winget --accept-source-agreements --accept-package-agreements }
     $State.DockerInstalledByJAI=$true; SaveState
+    Refresh-Path
+    Log "Docker Desktop installation completed. The Docker CLI may require Docker Desktop to be started before it becomes available." "WARN"
     StepEnd "Installing Docker Desktop"
   } else { Log "Docker CLI already installed; skipping installation." }
 
@@ -105,18 +129,24 @@ try {
       Log "Removing incomplete repository directory: $RepoDir" "WARN"
       Remove-Item -Recurse -Force $RepoDir
     }
-    Run "git clone" { git clone "https://github.com/$Repo.git" $RepoDir }
+    Run "git clone" { & $GitExe clone "https://github.com/$Repo.git" $RepoDir }
   } else {
-    Run "git fetch" { git -C $RepoDir fetch --all --prune }
-    Run "git pull --ff-only" { git -C $RepoDir pull --ff-only }
+    Run "git fetch" { & $GitExe -C $RepoDir fetch --all --prune }
+    Run "git pull --ff-only" { & $GitExe -C $RepoDir pull --ff-only }
   }
-  $commit = git -C $RepoDir rev-parse HEAD
+  $commit = & $GitExe -C $RepoDir rev-parse HEAD
   $State.Commit=$commit; SaveState
   Log "JAI source revision: $commit"
   StepEnd "Preparing JAI repository"
 
   StepStart "Validating Docker"
-  if (-not (Has "docker")) { throw "Docker CLI is unavailable after installation." }
+  Refresh-Path
+  if (-not (Has "docker")) {
+    $dockerCandidates = @("$env:ProgramFiles\Docker\Docker\resources\bin\docker.exe","$env:ProgramFiles\Docker\Docker\resources\bin\docker-compose.exe")
+    $docker = Resolve-Tool "docker" $dockerCandidates
+    if ($docker) { $env:Path = "$(Split-Path $docker);$env:Path"; Log "Docker executable resolved to: $docker" }
+  }
+  if (-not (Has "docker")) { throw "Docker CLI is unavailable after installation. Start Docker Desktop, then rerun JAI." }
   Run "docker version" { docker version }
   $compose = Join-Path $RepoDir "docker-compose.yml"
   if (Test-Path $compose) {
