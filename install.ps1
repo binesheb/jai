@@ -63,12 +63,21 @@ function Test-PendingReboot {
 }
 function Wait-ForDocker([int]$TimeoutSeconds = 180) {
   Refresh-Path
-  if (-not (Has "docker")) {
+  Refresh-Path
+  $dockerDesktopExe="$env:ProgramFiles\Docker\Docker\Docker Desktop.exe"
+  $dockerCli=Resolve-Tool "docker" @("$env:ProgramFiles\Docker\Docker\resources\bin\docker.exe")
+  if ($dockerCli) {
+    Log "Docker CLI already installed and resolved to: $dockerCli; skipping WinGet."
+  } elseif (Test-Path $dockerDesktopExe) {
+    Log "Docker Desktop is already installed but its CLI is not currently on PATH. It will be started/resolved without reinstalling."
+    $dockerBin=Split-Path "$env:ProgramFiles\Docker\Docker\resources\bin\docker.exe"
+    if (Test-Path $dockerBin) { $env:Path="$dockerBin;$env:Path" }
+  } else {
     StepStart "Installing Docker Desktop"
     Run "winget Docker.DockerDesktop" { winget install --id Docker.DockerDesktop -e --source winget --accept-source-agreements --accept-package-agreements --disable-interactivity }
     $State.DockerInstalledByJAI=$true;SaveState;Refresh-Path
     StepEnd "Installing Docker Desktop"
-  } else { Log "Docker CLI already installed; skipping installation." }
+  }
 
   StepStart "Preparing JAI repository"
   if(-not(Test-Path (Join-Path $RepoDir ".git"))){
