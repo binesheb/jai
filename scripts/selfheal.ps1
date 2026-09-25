@@ -95,6 +95,7 @@ function Publish-GitHubIncident([bool]$Resolved) {
     } catch { $issue=$null }
   }
   if(-not $issue){ $issue=Get-OpenIncident }
+  if(-not (Test-Path -LiteralPath $IncidentLog)){ $IncidentLog=$Log }
   $uploadedIncident=Publish-LogToGitHub $IncidentLog
   $uploadedSelfHeal=Publish-LogToGitHub $Log
   $incident=Read-LogTail $IncidentLog
