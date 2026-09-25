@@ -775,6 +775,8 @@ try {
 } catch {
   Log "JAI bootstrap FAILED: $($_.Exception.Message)" "ERROR"
   Log "Stack: $($_.ScriptStackTrace)" "ERROR"
+  # Upload every log currently present before opening/updating the incident.
+  @(Publish-AllLogsToGitHub) | Out-Null
   Publish-Incident -FailureSummary $_.Exception.Message | Out-Null
   Write-Host ""
   Write-Host "JAI bootstrap FAILED. Attempting automatic recovery..." -ForegroundColor Yellow
