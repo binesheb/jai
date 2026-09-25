@@ -5,7 +5,9 @@ on:
     types: [opened, reopened, edited]
 
 permissions:
+  contents: write
   issues: write
+  pull-requests: write
 
 jobs:
   review:
@@ -80,7 +82,22 @@ jobs:
               body = body.rstrip() + "\n\n" + section + "\n"
 
           subprocess.run(
-              ["gh", "issue", "edit", issue, "--repo", repo, "--body", body],
+              ["gh", "issue", "edit", issue, "--repo", repo, "--body", body, "--add-label", "ai-review"],
               check=True
           )
-          print(f"Updated issue #{issue} with a machine-generated resolution checklist.")
+          subprocess.run(
+              ["gh", "issue", "comment", issue, "--repo", repo, "--body",
+               """## AI review queue
+
+This incident is ready for ChatGPT/GitHub review. Read all logs under logs/incidents/ for this host, inspect the relevant repository code and recent CI history, then:
+
+1. Determine the root cause from evidence.
+2. If it is documentation/configuration/operational guidance, update the Issue with the exact remediation.
+3. If a repository code/config change is required, create a focused PR; do not make unrelated changes.
+4. Run/verify CI and record the result on this Issue.
+5. If the failure is caused by the Windows environment rather than JAI code, document the environmental remediation instead of changing code.
+
+Do not invent successful tests or claim the local machine was repaired unless the evidence shows it."""],
+              check=True
+          )
+          print(f"Updated issue #{issue} with a machine-generated resolution checklist and AI review request.")
