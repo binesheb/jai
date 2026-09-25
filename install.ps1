@@ -21,7 +21,6 @@ $State = [ordered]@{
   WslDistro = $null
   IncidentIssueNumber = $null
   IncidentLog = $null
-  IncidentLogRepoPath = $null
   InstalledAt = (Get-Date -Format o)
   Host = $env:COMPUTERNAME
 }
@@ -137,37 +136,8 @@ function Publish-Incident {
     $State.IncidentLog = $Log
     Save-State
     Log "GitHub incident issue created: #$($issue.number)"
-    Publish-IncidentLog -IssueNumber $issue.number | Out-Null
     return $true
   } catch { Log "GitHub incident publishing failed: $($_.Exception.Message)" "WARN"; return $false }
-}
-
-function Publish-IncidentLog([int]$IssueNumber) {
-  if (-not $IssueNumber) { return $false }
-  $gh = Get-Command gh -ErrorAction SilentlyContinue
-  if (-not $gh) {
-    Log "Incident log upload skipped: GitHub CLI is unavailable." "WARN"
-    return $false
-  }
-  try {
-    $raw = Read-LogText $Log
-    $safe = [regex]::Replace($raw, '(?im)(authorization\s*:\s*bearer\s+)[^\s]+', '$1[REDACTED]')
-    $safe = [regex]::Replace($safe, '(?im)((?:token|password|secret|api[_-]?key)\s*[:=]\s*)[^\s]+', '$1[REDACTED]')
-    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-    $hostSafe = ($env:COMPUTERNAME -replace '[^A-Za-z0-9._-]', '_')
-    $path = "logs/incidents/issue-$IssueNumber-$hostSafe-$stamp.log"
-    $content = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($safe))
-    $payload = @{ message="chore: upload JAI incident log #$IssueNumber"; content=$content; branch="main" } | ConvertTo-Json -Compress
-    & $gh.Source api "repos/$Repo/contents/$path" --method PUT --input - <<< $payload | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "gh api returned exit code $LASTEXITCODE" }
-    $State.IncidentLogRepoPath = $path
-    Save-State
-    Log "Sanitized incident log uploaded to GitHub: $path"
-    return $true
-  } catch {
-    Log "Incident log upload failed: $($_.Exception.Message)" "WARN"
-    return $false
-  }
 }
 
 function Log([string]$Message, [string]$Level = "INFO") {
