@@ -8,7 +8,10 @@ $LogDir = Join-Path $Root "logs"
 $RepoDir = Join-Path $Root "repo"
 New-Item -ItemType Directory -Force -Path $Root,$LogDir | Out-Null
 $Log = Join-Path $LogDir ("install-" + (Get-Date -Format "yyyyMMdd-HHmmss") + ".log")
+$StateFile = Join-Path $Root "installation-state.json"
 $StartTime = Get-Date
+$State = [ordered]@{ GitInstalledByJAI=$false; WslInstalledByJAI=$false; DockerInstalledByJAI=$false; WslDistro=$null; InstalledAt=(Get-Date -Format o); Host=$env:COMPUTERNAME }
+function SaveState { $State | ConvertTo-Json | Set-Content -Path $StateFile -Encoding UTF8 }
 $Step = 0
 
 function Log([string]$Message, [string]$Level = "INFO") {
@@ -77,12 +80,14 @@ try {
   if (-not (Has "git")) {
     StepStart "Installing Git"
     Run "winget Git.Git" { winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements }
+    $State.GitInstalledByJAI=$true; SaveState
     StepEnd "Installing Git"
   } else { Log "Git already installed; skipping installation." }
 
   if (-not (Has "wsl")) {
     StepStart "Installing WSL"
     Run "wsl --install" { wsl --install --no-distribution }
+    $State.WslInstalledByJAI=$true; SaveState
     Log "WSL installation requested. Windows restart may be required." "WARN"
     StepEnd "Installing WSL"
   } else { Log "WSL already installed; checking status."; Run "wsl --status" { wsl --status } }
@@ -90,6 +95,7 @@ try {
   if (-not (Has "docker")) {
     StepStart "Installing Docker Desktop"
     Run "winget Docker.DockerDesktop" { winget install --id Docker.DockerDesktop -e --source winget --accept-source-agreements --accept-package-agreements }
+    $State.DockerInstalledByJAI=$true; SaveState
     StepEnd "Installing Docker Desktop"
   } else { Log "Docker CLI already installed; skipping installation." }
 
@@ -105,6 +111,7 @@ try {
     Run "git pull --ff-only" { git -C $RepoDir pull --ff-only }
   }
   $commit = git -C $RepoDir rev-parse HEAD
+  $State.Commit=$commit; SaveState
   Log "JAI source revision: $commit"
   StepEnd "Preparing JAI repository"
 
@@ -118,6 +125,7 @@ try {
   StepEnd "Validating Docker"
 
   $elapsed = (Get-Date) - $StartTime
+  SaveState
   Log "JAI bootstrap completed successfully in $([math]::Round($elapsed.TotalSeconds,1)) seconds."
   Write-Host ""
   Write-Host "JAI bootstrap completed successfully." -ForegroundColor Green
