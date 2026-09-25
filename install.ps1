@@ -440,7 +440,7 @@ try {
     Log "Docker image pull still failing after normal retries. Starting JAI Self-Heal." "WARN"
     $selfHeal = Join-Path $RepoDir "scripts\selfheal.ps1"
     if (Test-Path -LiteralPath $selfHeal) {
-      & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $selfHeal
+      & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $selfHeal -IncidentLog $Log -FailureSummary "JAI bootstrap failed: $($_.Exception.Message)" -IncidentLog $Log -FailureSummary "Docker image pull failed after automatic retries." 
       if ($LASTEXITCODE -ne 0) {
         throw "Docker image pull failed and JAI Self-Heal could not fully recover the environment."
       }
