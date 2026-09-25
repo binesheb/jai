@@ -66,6 +66,7 @@ try {
   Write-Host "========================================" -ForegroundColor Cyan
   Write-Host "Live log: $Log" -ForegroundColor Yellow
   Log "JAI bootstrap started."
+  Refresh-Path
   Log "PowerShell: $($PSVersionTable.PSVersion)"
   Log "User: $env:USERNAME"
   Log "Host: $env:COMPUTERNAME"
@@ -91,19 +92,21 @@ try {
     throw "winget is required. Install Microsoft App Installer, then rerun JAI."
   }
 
-  if (-not (Has "git")) {
-    StepStart "Installing Git"
-    Run "winget Git.Git" { winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements }
-    $State.GitInstalledByJAI=$true; SaveState
-    Refresh-Path
-    $git = Resolve-Tool "git" @("$env:ProgramFiles\Git\cmd\git.exe","$env:ProgramFiles\Git\bin\git.exe","$env:LOCALAPPDATA\Programs\Git\cmd\git.exe")
-    if (-not $git) { throw "Git was installed by winget but git.exe is not visible. Restart PowerShell and rerun the installer." }
-    Log "Git executable resolved to: $git"
-    StepEnd "Installing Git"
-  } else { Log "Git already installed; skipping installation." }
   Refresh-Path
   $GitExe = Resolve-Tool "git" @("$env:ProgramFiles\Git\cmd\git.exe","$env:ProgramFiles\Git\bin\git.exe","$env:LOCALAPPDATA\Programs\Git\cmd\git.exe")
-  if (-not $GitExe) { throw "Git is required but git.exe could not be located." }
+  if ($GitExe) {
+    Log "Git already installed and resolved to: $GitExe; skipping winget."
+  } else {
+    StepStart "Installing Git"
+    # winget can return a non-zero code when the package is already installed.
+    Run "winget Git.Git" { winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements --disable-interactivity }
+    Refresh-Path
+    $GitExe = Resolve-Tool "git" @("$env:ProgramFiles\Git\cmd\git.exe","$env:ProgramFiles\Git\bin\git.exe","$env:LOCALAPPDATA\Programs\Git\cmd\git.exe")
+    if (-not $GitExe) { throw "Git was not found after installation. Restart PowerShell and rerun the installer." }
+    $State.GitInstalledByJAI=$true; SaveState
+    Log "Git executable resolved to: $GitExe"
+    StepEnd "Installing Git"
+  }
   Log "Using Git executable: $GitExe"
 
   if (-not (Has "wsl")) {
