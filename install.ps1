@@ -118,6 +118,29 @@ function Run-Command([string]$Name, [scriptblock]$Command) {
   }
 }
 
+function Run-With-Retry([string]$Name, [scriptblock]$Command, [int]$Attempts = 3, [int]$DelaySeconds = 10) {
+  for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+    try {
+      Log "RETRYABLE COMMAND ATTEMPT $attempt/$Attempts: $Name"
+      & $Command 2>&1 | ForEach-Object {
+        $text = $_.ToString()
+        Log "$Name :: $text"
+        Write-Host $text
+      }
+      if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+        throw "Exit code $LASTEXITCODE"
+      }
+      Log "RETRYABLE COMMAND COMPLETE: $Name"
+      return
+    } catch {
+      Log "RETRYABLE COMMAND FAILED: $Name :: $($_.Exception.Message)" "WARN"
+      if ($attempt -eq $Attempts) { throw }
+      Log "Waiting $DelaySeconds seconds before retrying $Name." "WARN"
+      Start-Sleep -Seconds $DelaySeconds
+    }
+  }
+}
+
 function Wait-ForDocker([int]$TimeoutSeconds = 180) {
   Refresh-Path
 
@@ -408,10 +431,10 @@ try {
     try { docker compose config } finally { Pop-Location }
   }
 
-  Run-Command "docker compose pull" {
+  Run-With-Retry "docker compose pull" {
     Push-Location $RepoDir
     try { docker compose pull } finally { Pop-Location }
-  }
+  } 4 15
 
   Run-Command "docker compose up -d" {
     Push-Location $RepoDir
