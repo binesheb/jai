@@ -547,7 +547,7 @@ try {
 
     try {
       Run-With-Retry "git clone" {
-        & $GitExe clone "https://github.com/$Repo.git" $RepoDir
+        & $GitExe -c http.version=HTTP/1.1 -c credential.interactive=never clone "https://github.com/$Repo.git" $RepoDir
       } -Attempts 2 -DelaySeconds 5
     } catch {
       Log "Git clone failed. Falling back to the GitHub source archive." "WARN"
@@ -558,7 +558,7 @@ try {
     # divergence, or a transient fetch failure before giving up.
     try {
       Run-With-Retry "git fetch" {
-        & $GitExe -C $RepoDir fetch origin main --prune
+        & $GitExe -c http.version=HTTP/1.1 -c credential.interactive=never -C $RepoDir fetch origin main --prune
       } -Attempts 3 -DelaySeconds 5
     } catch {
       Log "Git fetch failed. Starting automatic repository recovery." "WARN"
@@ -721,9 +721,10 @@ try {
 
   Write-Host ""
   Write-Host "JAI bootstrap completed successfully." -ForegroundColor Green
-  Write-Host "Detailed log: $Log" -ForegroundColor Yellow
   Write-Host "Repository: $RepoDir"
   Write-Host "Infrastructure: Docker Compose services started."
+  Write-Host "Installation log cleared because bootstrap completed successfully." -ForegroundColor Green
+  Remove-Item -LiteralPath $Log -Force -ErrorAction SilentlyContinue
 } catch {
   Log "JAI bootstrap FAILED: $($_.Exception.Message)" "ERROR"
   Log "Stack: $($_.ScriptStackTrace)" "ERROR"
