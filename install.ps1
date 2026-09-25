@@ -121,7 +121,7 @@ function Run-Command([string]$Name, [scriptblock]$Command) {
 function Run-With-Retry([string]$Name, [scriptblock]$Command, [int]$Attempts = 3, [int]$DelaySeconds = 10) {
   for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
     try {
-      Log "RETRYABLE COMMAND ATTEMPT $attempt/$Attempts: $Name"
+      Log "RETRYABLE COMMAND ATTEMPT ${attempt}/${Attempts}: $Name"
       & $Command 2>&1 | ForEach-Object {
         $text = $_.ToString()
         Log "$Name :: $text"
