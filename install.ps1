@@ -857,7 +857,21 @@ try {
       try { docker compose --progress plain pull } finally { Pop-Location }
     } 4 15
   } catch {
-    Log "Docker image pull still failing after normal retries. Starting JAI Self-Heal." "WARN"
+    Log "Docker image pull still failing after normal retries. Starting direct per-image diagnostics." "WARN"
+    # Compose can collapse registry/proxy failures into a single "Pulling" status.
+    # Pull each image directly so the registry error, HTTP status, TLS/proxy error,
+    # or manifest error is captured verbatim in the diagnostic log.
+    $images = @("redis:7-alpine", "pgvector/pgvector:0.8.6-pg16")
+    foreach ($image in $images) {
+      try {
+        Run-With-Retry "docker pull $image" {
+          & docker pull $image
+        } 2 10
+      } catch {
+        Log "DIRECT IMAGE PULL FAILED: $image :: $($_.Exception.Message)" "ERROR"
+      }
+    }
+    Log "Starting JAI Self-Heal after direct image diagnostics." "WARN"
     $selfHeal = Join-Path $RepoDir "scripts\selfheal.ps1"
     if (Test-Path -LiteralPath $selfHeal) {
       & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $selfHeal -IncidentLog $Log -FailureSummary "Docker image pull failed after automatic retries."
