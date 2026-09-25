@@ -1,0 +1,99 @@
+name: JAI Incident Review
+
+on:
+  push:
+    paths:
+      - "logs/incidents/**"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout incident log
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Rewrite incident log into a resolution checklist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import os, re, subprocess, json
+          from pathlib import Path
+
+          files = list(Path("logs/incidents").glob("issue-*.log"))
+          if not files:
+              print("No incident logs found.")
+              raise SystemExit(0)
+
+          path = max(files, key=lambda p: p.stat().st_mtime)
+          m = re.search(r"issue-(\d+)-", path.name)
+          if not m:
+              print(f"Cannot determine issue number from {path}")
+              raise SystemExit(0)
+          issue = m.group(1)
+
+          text = path.read_text(encoding="utf-8", errors="replace")
+          lower = text.lower()
+
+          checks = []
+          def add(key, label):
+              if key in lower and label not in [x[1] for x in checks]:
+                  checks.append((key, label))
+
+          add("git ", "GitHub repository access / Git transport")
+          add("git clone", "Repository clone/update")
+          add("git fetch", "Repository fetch/recovery")
+          add("github authentication", "GitHub authentication and write access")
+          add("wsl", "WSL installation and health")
+          add("docker", "Docker Desktop / Docker Engine")
+          add("docker compose", "Docker Compose configuration")
+          add("docker compose pull", "Infrastructure image pull")
+          add("docker compose up", "JAI service startup")
+          add("health check", "JAI health check")
+          add("postgres", "PostgreSQL / pgvector")
+          add("redis", "Redis")
+          add("permission", "Windows permissions / elevation")
+          add("reboot", "Pending Windows restart")
+
+          if not checks:
+              checks.append(("failure", "Review and resolve the reported bootstrap failure"))
+
+          current = json.loads(subprocess.check_output(
+              ["gh", "api", f"repos/binesheb/jai/issues/{issue}"], text=True
+          )).get("body") or ""
+
+          start = "<!-- JAI_INCIDENT_CHECKLIST_START -->"
+          end = "<!-- JAI_INCIDENT_CHECKLIST_END -->"
+          lines = [
+              start,
+              "## JAI Resolution Checklist",
+              "",
+              "GitHub Actions generated this checklist from the uploaded incident log. "
+              "Each item is independently reviewable and should be cleared by Self-Heal, "
+              "a commit, or a pull request.",
+              ""
+          ]
+          for _, label in checks:
+              lines.append(f"- [ ] {label}")
+          lines += ["", f"Incident log: {path.as_posix()}", "", end]
+          section = "\n".join(lines)
+
+          if start in current and end in current:
+              current = re.sub(re.escape(start) + r".*?" + re.escape(end),
+                               lambda _: section, current, flags=re.S)
+          else:
+              current = current.rstrip() + "\n\n" + section + "\n"
+
+          subprocess.run([
+              "gh", "api", "--method", "PATCH",
+              f"repos/binesheb/jai/issues/{issue}",
+              "-f", f"body={current}"
+          ], check=True)
+
+          print(f"Updated issue #{issue} from {path}")
