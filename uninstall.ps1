@@ -47,7 +47,7 @@ if (Get-Command docker -ErrorAction SilentlyContinue) {
     Log "Stopping JAI Docker services and removing JAI project volumes."
     Push-Location $RepoDir
     try {
-      docker compose down --volumes --remove-orphans 2>&1 | ForEach-Object { Log "docker :: $($_.ToString())" }
+      docker compose down --volumes --remove-orphans --rmi local 2>&1 | ForEach-Object { Log "docker :: $($_.ToString())" }
     } catch { Log "Docker cleanup failed: $($_.Exception.Message)" "WARN" }
     finally { Pop-Location }
   }
@@ -86,5 +86,7 @@ if ($State) {
 Write-Host ""
 Write-Host "JAI uninstall completed." -ForegroundColor Green
 Write-Host "JAI-specific files, containers, volumes and configuration have been removed."
-Write-Host "Uninstall log was stored during the operation at: $Log"
 Log "JAI uninstall completed."
+Write-Host "Cleanup log: $Log" -ForegroundColor DarkGray
+# The log is itself removed to honor the clean-uninstall requirement.
+Remove-Item -LiteralPath $Log -Force -ErrorAction SilentlyContinue
