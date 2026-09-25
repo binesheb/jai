@@ -123,7 +123,7 @@ function Read-LogText([string]$Path,[int]$MaxChars=50000) {
   if ($text.Length -gt $MaxChars) { return "[log truncated]`n" + $text.Substring($text.Length-$MaxChars) }
   return $text
 }
-function Publish-LogToGitHub([string]$LocalPath, [string]$RemoteFolder = "logs/incidents") {
+function Publish-LogToGitHub([string]$LocalPath, [string]$RemoteFolder = "logs/incidents", [bool]$DeleteLocal = $false) {
   if (-not (Test-Path -LiteralPath $LocalPath)) { return $null }
   $token = Get-GitHubToken
   if ([string]::IsNullOrWhiteSpace($token)) { Log "GitHub log upload skipped: no token." "WARN"; return $null }
@@ -144,12 +144,17 @@ function Publish-LogToGitHub([string]$LocalPath, [string]$RemoteFolder = "logs/i
     if($existing -and $existing.sha){ $payload.sha = $existing.sha }
     $result = Invoke-RestMethod -Method Put -Uri $uri -Headers $headers -Body ($payload | ConvertTo-Json -Depth 5) -ContentType "application/json"
     Log "JAI log uploaded to GitHub: $remotePath"
-    # Delete the local copy only after GitHub has acknowledged the upload.
-    try {
-      Remove-Item -LiteralPath $LocalPath -Force -ErrorAction Stop
-      Log "Local log deleted after confirmed GitHub upload: $LocalPath"
-    } catch {
-      Log "GitHub upload succeeded but local log could not be deleted: $LocalPath : $($_.Exception.Message)" "WARN"
+    # Never delete a diagnostic log as part of the upload operation. The caller
+    # must first append the final upload/verification status and then explicitly
+    # remove the local copy. This guarantees the GitHub copy contains the full
+    # diagnostic trail.
+    if ($DeleteLocal) {
+      try {
+        Remove-Item -LiteralPath $LocalPath -Force -ErrorAction Stop
+        Log "Local log deleted after confirmed GitHub upload: $LocalPath"
+      } catch {
+        Log "GitHub upload succeeded but local log could not be deleted: $LocalPath : $($_.Exception.Message)" "WARN"
+      }
     }
     return @{ Path=$remotePath; HtmlUrl=$result.content.html_url; DownloadUrl="https://raw.githubusercontent.com/$Repo/main/$remotePath" }
   } catch {
@@ -499,6 +504,36 @@ try {
   } catch {
     Log "Optional GPU tool inventory failed: $($_.Exception.Message)" "WARN"
   }
+  try {
+    $bios = Get-CimInstance Win32_BIOS
+    Log "BIOS: $($bios.Manufacturer) | $($bios.SMBIOSBIOSVersion) | ReleaseDate=$($bios.ReleaseDate)"
+    $board = Get-CimInstance Win32_BaseBoard
+    Log "MOTHERBOARD: $($board.Manufacturer) | $($board.Product) | Serial=$($board.SerialNumber)"
+  } catch { Log "Firmware/motherboard inventory failed: $($_.Exception.Message)" "WARN" }
+
+  try {
+    Get-CimInstance Win32_DiskDrive | ForEach-Object {
+      Log "DISK: Model=$($_.Model) | Interface=$($_.InterfaceType) | SizeGB=$([math]::Round($_.Size/1GB,1)) | Serial=$($_.SerialNumber)"
+    }
+  } catch { Log "Physical disk inventory failed: $($_.Exception.Message)" "WARN" }
+
+  try {
+    Get-NetIPConfiguration | ForEach-Object {
+      Log "NETCONFIG: Interface=$($_.InterfaceAlias) | IPv4=$((($_.IPv4Address | Select-Object -ExpandProperty IPAddress) -join ', ')) | Gateway=$((($_.IPv4DefaultGateway | Select-Object -ExpandProperty NextHop) -join ', ')) | DNS=$((($_.DNSServer.ServerAddresses) -join ', '))"
+    }
+  } catch { Log "Network configuration inventory failed: $($_.Exception.Message)" "WARN" }
+
+  try {
+    Get-Service | Where-Object { $_.Name -match 'docker|com.docker|wsl|lxss' } | ForEach-Object {
+      Log "SERVICE: $($_.Name) | Status=$($_.Status) | StartType=$($_.StartType)"
+    }
+  } catch { Log "Relevant service inventory failed: $($_.Exception.Message)" "WARN" }
+
+  try {
+    $features = Get-WindowsOptionalFeature -Online | Where-Object { $_.FeatureName -match 'VirtualMachinePlatform|Microsoft-Windows-Subsystem-Linux|Hyper-V' }
+    $features | ForEach-Object { Log "WINDOWS FEATURE: $($_.FeatureName) | State=$($_.State)" }
+  } catch { Log "Windows feature inventory failed: $($_.Exception.Message)" "WARN" }
+
   Log "Repository: https://github.com/$Repo"
 
   Step-Start "Detecting prerequisites"
@@ -849,25 +884,52 @@ try {
   # the installation succeeds and there is no incident issue.
   $uploadedRun = Publish-CompletedRunLog $Log
   if ($uploadedRun) {
-    Log "Completed-run log published to GitHub: $($uploadedRun.Path)"
+    Log "Completed-run log published to GitHub (pre-final verification): $($uploadedRun.Path)"
+    # The previous upload is intentionally followed by a final verification entry
+    # and a second upload so the retained GitHub artifact contains the final status.
+    Log "FINAL DIAGNOSTIC STATUS: SUCCESS"
+    Log "FINAL DIAGNOSTIC ARTIFACT: $($uploadedRun.Path)"
+    $verifiedRun = Publish-CompletedRunLog $Log
+    if ($verifiedRun) {
+      Log "Completed-run log final upload acknowledged by GitHub: $($verifiedRun.Path)"
+      Write-Host ""
+      Write-Host "JAI bootstrap completed successfully." -ForegroundColor Green
+      Write-Host "Repository: $RepoDir"
+      Write-Host "Infrastructure: Docker Compose services started."
+      Write-Host "Detailed installation log uploaded to GitHub: $($verifiedRun.Path)" -ForegroundColor Green
+      Write-Host "Local installation log will be cleared after confirmed final upload." -ForegroundColor Green
+      Remove-Item -LiteralPath $Log -Force -ErrorAction SilentlyContinue
+    } else {
+      Log "FINAL DIAGNOSTIC STATUS: GitHub final upload failed; local log retained." "WARN"
+      Write-Host ""
+      Write-Host "JAI bootstrap completed, but final diagnostic upload was not confirmed." -ForegroundColor Yellow
+      Write-Host "Local installation log retained: $Log" -ForegroundColor Yellow
+    }
   } else {
     Log "Completed-run log could not be published to GitHub; retaining the local log." "WARN"
-  }
-
-  Write-Host ""
-  Write-Host "JAI bootstrap completed successfully." -ForegroundColor Green
-  Write-Host "Repository: $RepoDir"
-  Write-Host "Infrastructure: Docker Compose services started."
-  if ($uploadedRun) {
-    Write-Host "Installation log uploaded to GitHub: $($uploadedRun.Path)" -ForegroundColor Green
-    Write-Host "Local installation log cleared after confirmed upload." -ForegroundColor Green
-    Remove-Item -LiteralPath $Log -Force -ErrorAction SilentlyContinue
-  } else {
-    Write-Host "Installation log retained locally because GitHub upload was not confirmed: $Log" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "JAI bootstrap completed, but GitHub diagnostic publication was not confirmed." -ForegroundColor Yellow
+    Write-Host "Local installation log retained: $Log" -ForegroundColor Yellow
   }
 } catch {
   Log "JAI bootstrap FAILED: $($_.Exception.Message)" "ERROR"
   Log "Stack: $($_.ScriptStackTrace)" "ERROR"
+  try {
+    Get-WinEvent -LogName System -MaxEvents 100 -ErrorAction Stop | ForEach-Object {
+      Log "SYSTEM EVENT: [$($_.TimeCreated)] [$($_.LevelDisplayName)] [$($_.ProviderName)] $($_.Message)"
+    }
+  } catch { Log "System event collection failed: $($_.Exception.Message)" "WARN" }
+  try {
+    Get-WinEvent -LogName Application -MaxEvents 100 -ErrorAction Stop | ForEach-Object {
+      Log "APPLICATION EVENT: [$($_.TimeCreated)] [$($_.LevelDisplayName)] [$($_.ProviderName)] $($_.Message)"
+    }
+  } catch { Log "Application event collection failed: $($_.Exception.Message)" "WARN" }
+  try {
+    if (Has "docker") {
+      $di = & docker info 2>&1
+      $di | ForEach-Object { Log "DOCKER INFO :: $($_.ToString())" }
+    }
+  } catch { Log "Docker info collection failed: $($_.Exception.Message)" "WARN" }
   Publish-Incident -FailureSummary $_.Exception.Message | Out-Null
   Write-Host ""
   Write-Host "JAI bootstrap FAILED. Attempting automatic recovery..." -ForegroundColor Yellow
