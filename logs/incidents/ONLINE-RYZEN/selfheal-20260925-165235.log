@@ -1,0 +1,122 @@
+2026-09-25 16:52:35.212 +05:30 [INFO] JAI Self-Heal started.
+2026-09-25 16:52:35.245 +05:30 [INFO] Host: ONLINE-RYZEN
+2026-09-25 16:52:35.247 +05:30 [INFO] Repository: C:\ProgramData\JAI\repo
+2026-09-25 16:52:35.258 +05:30 [INFO] REPAIR START: Refreshing JAI source
+2026-09-25 16:52:37.253 +05:30 [INFO] Refreshing JAI source :: Already up to date.
+2026-09-25 16:52:37.266 +05:30 [INFO] REPAIR COMPLETE: Refreshing JAI source
+2026-09-25 16:52:37.478 +05:30 [INFO] REPAIR START: Checking Docker engine
+2026-09-25 16:52:38.502 +05:30 [INFO] Checking Docker engine :: Client:
+2026-09-25 16:52:38.504 +05:30 [INFO] Checking Docker engine ::  Version:    29.8.0
+2026-09-25 16:52:38.506 +05:30 [INFO] Checking Docker engine ::  Context:    desktop-linux
+2026-09-25 16:52:38.509 +05:30 [INFO] Checking Docker engine ::  Debug Mode: false
+2026-09-25 16:52:38.511 +05:30 [INFO] Checking Docker engine ::  Plugins:
+2026-09-25 16:52:38.512 +05:30 [INFO] Checking Docker engine ::   agent: Docker AI Agent Runner (Docker Inc.)
+2026-09-25 16:52:38.513 +05:30 [INFO] Checking Docker engine ::     Version:  v1.136.0
+2026-09-25 16:52:38.515 +05:30 [INFO] Checking Docker engine ::     Path:     C:\Program Files\Docker\cli-plugins\docker-agent.exe
+2026-09-25 16:52:38.517 +05:30 [INFO] Checking Docker engine ::   ai: Docker AI Agent - Ask Gordon (Docker Inc.)
+2026-09-25 16:52:38.531 +05:30 [INFO] Checking Docker engine ::     Version:  v1.31.0
+2026-09-25 16:52:38.532 +05:30 [INFO] Checking Docker engine ::     Path:     C:\Program Files\Docker\cli-plugins\docker-ai.exe
+2026-09-25 16:52:38.534 +05:30 [INFO] Checking Docker engine ::   buildx: Docker Buildx (Docker Inc.)
+2026-09-25 16:52:38.536 +05:30 [INFO] Checking Docker engine ::     Version:  v0.37.0
+2026-09-25 16:52:38.537 +05:30 [INFO] Checking Docker engine ::     Path:     C:\Program Files\Docker\cli-plugins\docker-buildx.exe
+2026-09-25 16:52:38.539 +05:30 [INFO] Checking Docker engine ::   compose: Docker Compose (Docker Inc.)
+2026-09-25 16:52:38.540 +05:30 [INFO] Checking Docker engine ::     Version:  v5.5.1
+2026-09-25 16:52:38.541 +05:30 [INFO] Checking Docker engine ::     Path:     C:\Program Files\Docker\cli-plugins\docker-compose.exe
+2026-09-25 16:52:38.543 +05:30 [INFO] Checking Docker engine ::   debug: Get a shell into any image or container (Docker Inc.)
+2026-09-25 16:52:38.544 +05:30 [INFO] Checking Docker engine ::     Version:  0.0.47
+2026-09-25 16:52:38.545 +05:30 [INFO] Checking Docker engine ::     Path:     C:\Program Files\Docker\cli-plugins\docker-debug.exe
+2026-09-25 16:52:38.547 +05:30 [INFO] Checking Docker engine ::   desktop: Docker Desktop commands (Docker Inc.)
+2026-09-25 16:52:38.548 +05:30 [INFO] Checking Docker engine ::     Version:  v0.4.4
+2026-09-25 16:52:38.550 +05:30 [INFO] Checking Docker engine ::     Path:     C:\Program Files\Docker\cli-plugins\docker-desktop.exe
+2026-09-25 16:52:38.552 +05:30 [INFO] Checking Docker engine ::   dhi: CLI for managing Docker Hardened Images (Docker Inc.)
+2026-09-25 16:52:38.553 +05:30 [INFO] Checking Docker engine ::     Version:  v0.0.7
+2026-09-25 16:52:38.555 +05:30 [INFO] Checking Docker engine ::     Path:     C:\Program Files\Docker\cli-plugins\docker-dhi.exe
+2026-09-25 16:52:38.556 +05:30 [INFO] Checking Docker engine ::   extension: Manages Docker extensions (Docker Inc.)
+2026-09-25 16:52:38.558 +05:30 [INFO] Checking Docker engine ::     Version:  v0.2.31
+2026-09-25 16:52:38.559 +05:30 [INFO] Checking Docker engine ::     Path:     C:\Program Files\Docker\cli-plugins\docker-extension.exe
+2026-09-25 16:52:38.560 +05:30 [INFO] Checking Docker engine ::   init: Creates Docker-related starter files for your project (Docker Inc.)
+2026-09-25 16:52:38.562 +05:30 [INFO] Checking Docker engine ::     Version:  v1.4.0
+2026-09-25 16:52:38.563 +05:30 [INFO] Checking Docker engine ::     Path:     C:\Program Files\Docker\cli-plugins\docker-init.exe
+2026-09-25 16:52:38.565 +05:30 [INFO] Checking Docker engine ::   mcp: Docker MCP Plugin (Docker Inc.)
+2026-09-25 16:52:38.567 +05:30 [INFO] Checking Docker engine ::     Version:  v0.43.3
+2026-09-25 16:52:38.570 +05:30 [INFO] Checking Docker engine ::     Path:     C:\Program Files\Docker\cli-plugins\docker-mcp.exe
+2026-09-25 16:52:38.571 +05:30 [INFO] Checking Docker engine ::   model: Docker Model Runner (Docker Inc.)
+2026-09-25 16:52:38.573 +05:30 [INFO] Checking Docker engine ::     Version:  v1.2.6
+2026-09-25 16:52:38.574 +05:30 [INFO] Checking Docker engine ::     Path:     C:\Program Files\Docker\cli-plugins\docker-model.exe
+2026-09-25 16:52:38.575 +05:30 [INFO] Checking Docker engine ::   offload: Docker Offload (Docker Inc.)
+2026-09-25 16:52:38.577 +05:30 [INFO] Checking Docker engine ::     Version:  v0.6.17
+2026-09-25 16:52:38.578 +05:30 [INFO] Checking Docker engine ::     Path:     C:\Program Files\Docker\cli-plugins\docker-offload.exe
+2026-09-25 16:52:38.579 +05:30 [INFO] Checking Docker engine ::   pass: Docker Pass Secrets Manager Plugin (beta) (Docker Inc.)
+2026-09-25 16:52:38.581 +05:30 [INFO] Checking Docker engine ::     Version:  v0.2.2
+2026-09-25 16:52:38.582 +05:30 [INFO] Checking Docker engine ::     Path:     C:\Program Files\Docker\cli-plugins\docker-pass.exe
+2026-09-25 16:52:38.584 +05:30 [INFO] Checking Docker engine ::   sandbox: "docker sandbox" is deprecated, use Docker Sandboxes instead (Docker Inc.)
+2026-09-25 16:52:38.586 +05:30 [INFO] Checking Docker engine ::     Version:  v0.13.0
+2026-09-25 16:52:38.588 +05:30 [INFO] Checking Docker engine ::     Path:     C:\Program Files\Docker\cli-plugins\docker-sandbox.exe
+2026-09-25 16:52:38.588 +05:30 [INFO] Checking Docker engine ::   scout: Docker Scout (Docker Inc.)
+2026-09-25 16:52:38.590 +05:30 [INFO] Checking Docker engine ::     Version:  v1.24.0
+2026-09-25 16:52:38.591 +05:30 [INFO] Checking Docker engine ::     Path:     C:\Program Files\Docker\cli-plugins\docker-scout.exe
+2026-09-25 16:52:38.592 +05:30 [INFO] Checking Docker engine :: 
+2026-09-25 16:52:38.594 +05:30 [INFO] Checking Docker engine :: Server:
+2026-09-25 16:52:38.595 +05:30 [INFO] Checking Docker engine ::  Containers: 0
+2026-09-25 16:52:38.596 +05:30 [INFO] Checking Docker engine ::   Running: 0
+2026-09-25 16:52:38.598 +05:30 [INFO] Checking Docker engine ::   Paused: 0
+2026-09-25 16:52:38.599 +05:30 [INFO] Checking Docker engine ::   Stopped: 0
+2026-09-25 16:52:38.601 +05:30 [INFO] Checking Docker engine ::  Images: 2
+2026-09-25 16:52:38.602 +05:30 [INFO] Checking Docker engine ::  Server Version: 29.8.0
+2026-09-25 16:52:38.604 +05:30 [INFO] Checking Docker engine ::  Storage Driver: overlayfs
+2026-09-25 16:52:38.605 +05:30 [INFO] Checking Docker engine ::   driver-type: io.containerd.snapshotter.v1
+2026-09-25 16:52:38.606 +05:30 [INFO] Checking Docker engine ::  Logging Driver: json-file
+2026-09-25 16:52:38.608 +05:30 [INFO] Checking Docker engine ::  Cgroup Driver: cgroupfs
+2026-09-25 16:52:38.609 +05:30 [INFO] Checking Docker engine ::  Cgroup Version: 2
+2026-09-25 16:52:38.611 +05:30 [INFO] Checking Docker engine ::  Plugins:
+2026-09-25 16:52:38.613 +05:30 [INFO] Checking Docker engine ::   Volume: local
+2026-09-25 16:52:38.615 +05:30 [INFO] Checking Docker engine ::   Network: bridge host ipvlan macvlan null overlay
+2026-09-25 16:52:38.617 +05:30 [INFO] Checking Docker engine ::   Log: awslogs fluentd gcplogs gelf journald json-file local splunk syslog
+2026-09-25 16:52:38.618 +05:30 [INFO] Checking Docker engine ::  CDI spec directories:
+2026-09-25 16:52:38.620 +05:30 [INFO] Checking Docker engine ::   /etc/cdi
+2026-09-25 16:52:38.621 +05:30 [INFO] Checking Docker engine ::   /var/run/cdi
+2026-09-25 16:52:38.622 +05:30 [INFO] Checking Docker engine ::  Discovered Devices:
+2026-09-25 16:52:38.624 +05:30 [INFO] Checking Docker engine ::   cdi: docker.com/gpu=webgpu
+2026-09-25 16:52:38.625 +05:30 [INFO] Checking Docker engine ::  Swarm: inactive
+2026-09-25 16:52:38.627 +05:30 [INFO] Checking Docker engine ::  Runtimes: nvidia runc io.containerd.runc.v2
+2026-09-25 16:52:38.628 +05:30 [INFO] Checking Docker engine ::  Default Runtime: runc
+2026-09-25 16:52:38.630 +05:30 [INFO] Checking Docker engine ::  Init Binary: docker-init
+2026-09-25 16:52:38.632 +05:30 [INFO] Checking Docker engine ::  containerd version: db8809540e1a7a9da5d518876894933ff55692ab
+2026-09-25 16:52:38.633 +05:30 [INFO] Checking Docker engine ::  runc version: v1.4.3-0-gbb14dabe
+2026-09-25 16:52:38.635 +05:30 [INFO] Checking Docker engine ::  init version: de40ad0
+2026-09-25 16:52:38.637 +05:30 [INFO] Checking Docker engine ::  Security Options:
+2026-09-25 16:52:38.638 +05:30 [INFO] Checking Docker engine ::   seccomp
+2026-09-25 16:52:38.639 +05:30 [INFO] Checking Docker engine ::    Profile: builtin
+2026-09-25 16:52:38.641 +05:30 [INFO] Checking Docker engine ::   cgroupns
+2026-09-25 16:52:38.642 +05:30 [INFO] Checking Docker engine ::  Kernel Version: 6.18.33.2-microsoft-standard-WSL2
+2026-09-25 16:52:38.644 +05:30 [INFO] Checking Docker engine ::  Operating System: Docker Desktop
+2026-09-25 16:52:38.646 +05:30 [INFO] Checking Docker engine ::  OSType: linux
+2026-09-25 16:52:38.647 +05:30 [INFO] Checking Docker engine ::  Architecture: x86_64
+2026-09-25 16:52:38.648 +05:30 [INFO] Checking Docker engine ::  CPUs: 12
+2026-09-25 16:52:38.650 +05:30 [INFO] Checking Docker engine ::  Total Memory: 7.456GiB
+2026-09-25 16:52:38.652 +05:30 [INFO] Checking Docker engine ::  Name: docker-desktop
+2026-09-25 16:52:38.654 +05:30 [INFO] Checking Docker engine ::  ID: c9ce4a91-20e7-4f0e-b95d-ad9cbb663efa
+2026-09-25 16:52:38.655 +05:30 [INFO] Checking Docker engine ::  Docker Root Dir: /var/lib/docker
+2026-09-25 16:52:38.656 +05:30 [INFO] Checking Docker engine ::  Debug Mode: false
+2026-09-25 16:52:38.658 +05:30 [INFO] Checking Docker engine ::  HTTP Proxy: http.docker.internal:3128
+2026-09-25 16:52:38.659 +05:30 [INFO] Checking Docker engine ::  HTTPS Proxy: http.docker.internal:3128
+2026-09-25 16:52:38.661 +05:30 [INFO] Checking Docker engine ::  No Proxy: hubproxy.docker.internal
+2026-09-25 16:52:38.663 +05:30 [INFO] Checking Docker engine ::  Labels:
+2026-09-25 16:52:38.664 +05:30 [INFO] Checking Docker engine ::   com.docker.desktop.address=npipe://\\.\pipe\docker_cli
+2026-09-25 16:52:38.666 +05:30 [INFO] Checking Docker engine ::  Experimental: false
+2026-09-25 16:52:38.668 +05:30 [INFO] Checking Docker engine ::  Insecure Registries:
+2026-09-25 16:52:38.669 +05:30 [INFO] Checking Docker engine ::   hubproxy.docker.internal:5555
+2026-09-25 16:52:38.671 +05:30 [INFO] Checking Docker engine ::   ::1/128
+2026-09-25 16:52:38.672 +05:30 [INFO] Checking Docker engine ::   127.0.0.0/8
+2026-09-25 16:52:38.674 +05:30 [INFO] Checking Docker engine ::  Live Restore Enabled: false
+2026-09-25 16:52:38.675 +05:30 [INFO] Checking Docker engine ::  Firewall Backend: iptables
+2026-09-25 16:52:38.677 +05:30 [INFO] Checking Docker engine :: 
+2026-09-25 16:52:38.678 +05:30 [INFO] REPAIR COMPLETE: Checking Docker engine
+2026-09-25 16:52:38.681 +05:30 [INFO] REPAIR START: Pulling JAI images (attempt 1/3)
+2026-09-25 16:52:38.825 +05:30 [INFO] Pulling JAI images (attempt 1/3) :: error while interpolating services.postgres.environment.POSTGRES_PASSWORD: [REDACTED] variable JAI_POSTGRES_PASSWORD is missing a value: Set JAI_POSTGRES_PASSWORD
+2026-09-25 16:52:38.840 +05:30 [WARN] REPAIR FAILED: Pulling JAI images (attempt 1/3) :: Exit code 1
+2026-09-25 16:52:38.842 +05:30 [INFO] REPAIR START: Recreating JAI services
+2026-09-25 16:52:39.016 +05:30 [INFO] Recreating JAI services :: error while interpolating services.postgres.environment.POSTGRES_PASSWORD: [REDACTED] variable JAI_POSTGRES_PASSWORD is missing a value: Set JAI_POSTGRES_PASSWORD
+2026-09-25 16:52:39.026 +05:30 [WARN] REPAIR FAILED: Recreating JAI services :: Exit code 1
+2026-09-25 16:52:39.741 +05:30 [WARN] SELF-HEAL could not fully repair JAI. Manual diagnosis may be required.
+2026-09-25 16:52:39.908 +05:30 [WARN] GitHub incident publishing skipped: no token or gh authentication found.
