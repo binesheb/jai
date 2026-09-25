@@ -131,12 +131,22 @@ function Publish-Incident {
   $logPath = $Log
   $body = "## JAI automatic bootstrap incident`n`n**Status:** UNRESOLVED`n**Host:** $env:COMPUTERNAME`n**User:** $env:USERNAME`n**Time:** $(Get-Date -Format o)`n`n### Failure summary`n$FailureSummary`n`n### Bootstrap log`nPath: $logPath`n`n````text`n$(Read-LogText $logPath)`n```` `n`nThis issue was created automatically by JAI. The bootstrap log is retained locally until the incident is resolved."
   try {
-    $payload = @{ title="JAI Bootstrap Incident - $env:COMPUTERNAME"; body=$body } | ConvertTo-Json -Depth 5
-    $issue = Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/$Repo/issues" -Headers $headers -Body $payload -ContentType "application/json"
+    $openIssues = Invoke-RestMethod -Method Get -Uri "https://api.github.com/repos/$Repo/issues?state=open&per_page=50" -Headers $headers
+    $title = "JAI Bootstrap Incident - $env:COMPUTERNAME"
+    $issue = @($openIssues | Where-Object { $_.title -eq $title -and -not $_.pull_request } | Select-Object -First 1)
+    if ($issue.Count -eq 0) {
+      $payload = @{ title=$title; body=$body } | ConvertTo-Json -Depth 5
+      $issue = Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/$Repo/issues" -Headers $headers -Body $payload -ContentType "application/json"
+      Log "GitHub incident issue created: #$($issue.number)"
+    } else {
+      $issue = $issue[0]
+      $comment = @{ body=("JAI bootstrap failed again. Latest failure log: " + $Log + "`n`nFailure summary: " + $FailureSummary) } | ConvertTo-Json
+      Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/$Repo/issues/$($issue.number)/comments" -Headers $headers -Body $comment -ContentType "application/json" | Out-Null
+      Log "Existing open GitHub incident reused: #$($issue.number)"
+    }
     $State.IncidentIssueNumber = $issue.number
     $State.IncidentLog = $Log
     Save-State
-    Log "GitHub incident issue created: #$($issue.number)"
     return $true
   } catch { Log "GitHub incident publishing failed: $($_.Exception.Message)" "WARN"; return $false }
 }
