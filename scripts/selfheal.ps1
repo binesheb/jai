@@ -95,11 +95,11 @@ function Publish-GitHubIncident([bool]$Resolved) {
     } catch { $issue=$null }
   }
   if(-not $issue){ $issue=Get-OpenIncident }
+  $uploadedIncident=Publish-LogToGitHub $IncidentLog
+  $uploadedSelfHeal=Publish-LogToGitHub $Log
+  $incident=Read-LogTail $IncidentLog
+  $incidentLinks = @($uploadedIncident,$uploadedSelfHeal) | Where-Object { $_ } | ForEach-Object { "[GitHub log]($($_.HtmlUrl)) — raw: $($_.DownloadUrl)" } | Out-String
   if(-not $Resolved -and -not $issue){
-    $uploadedIncident=Publish-LogToGitHub $IncidentLog
-    $uploadedSelfHeal=Publish-LogToGitHub $Log
-    $incident=Read-LogTail $IncidentLog
-    $incidentLinks = @($uploadedIncident,$uploadedSelfHeal) | Where-Object { $_ } | ForEach-Object { "[GitHub log]($($_.HtmlUrl)) — raw: $($_.DownloadUrl)" } | Out-String
     $body="## JAI automatic incident report`n`n**Status:** UNRESOLVED`n**Host:** $env:COMPUTERNAME`n**User:** $env:USERNAME`n**Time:** $(Get-Date -Format o)`n`n### GitHub logs`n$incidentLinks`n### Failure summary`n$FailureSummary`n`n### Bootstrap log`nPath: $IncidentLog`n`n````text`n$incident`n```` `n`n### Self-Heal log`nPath: $Log`n`n````text`n$(Read-LogTail $Log)`n```` `n`nThis issue was created automatically by JAI. Logs are retained locally until the incident is resolved."
     try { $payload=@{title="JAI Bootstrap Incident - $env:COMPUTERNAME";body=$body}|ConvertTo-Json -Depth 5; $issue=Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/binesheb/jai/issues" -Headers $headers -Body $payload -ContentType "application/json"; $script:State.IncidentIssueNumber=$issue.number; $script:State.IncidentLog=$IncidentLog; Save-State; Log "GitHub incident issue created: #$($issue.number)" } catch { Log "GitHub incident publishing failed: $($_.Exception.Message)" "WARN"; return }
   }
@@ -119,7 +119,7 @@ function Publish-GitHubIncident([bool]$Resolved) {
     $script:State.IncidentIssueNumber=$null; $script:State.IncidentLog=$null; Save-State
     foreach($p in $logsToRemove){ Remove-LogFromGitHub $p; Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }
   } elseif(-not $Resolved -and $issue){
-    try { $comment=@{body="JAI Self-Heal ran again but the environment is still not healthy. Latest self-heal log: $Log"}|ConvertTo-Json; Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/binesheb/jai/issues/$($issue.number)/comments" -Headers $headers -Body $comment -ContentType "application/json" | Out-Null } catch { Log "GitHub incident update failed: $($_.Exception.Message)" "WARN" }
+    try { $comment=@{body="JAI Self-Heal ran again but the environment is still not healthy.`n`nLatest GitHub logs:`n$incidentLinks"}|ConvertTo-Json; Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/binesheb/jai/issues/$($issue.number)/comments" -Headers $headers -Body $comment -ContentType "application/json" | Out-Null } catch { Log "GitHub incident update failed: $($_.Exception.Message)" "WARN" }
   }
 }
 function Refresh-RepositoryFromArchive {
