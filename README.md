@@ -18,6 +18,18 @@ The bootstrap is **resumable**. If WSL, Docker Desktop, or Windows requires a re
 
 After prerequisites are ready, the bootstrap creates a local `.env` with a generated PostgreSQL password, validates Docker Compose, pulls the infrastructure images, starts PostgreSQL/pgvector and Redis, and records the deployed Git revision. The `.env` file stays local and is never committed.
 
+## Failure logs and automatic incident lifecycle
+
+JAI keeps runtime and installation diagnostics under `C:\\ProgramData\\JAI\\logs\\`. If bootstrap does not complete, the installer reads the failed log and automatically publishes its relevant contents to a GitHub Issue when GitHub authentication is available. The incident number and source log path are stored in `installation-state.json` so Self-Heal can continue the same incident instead of creating duplicates.
+
+Self-Heal reads the incident log, attempts recovery, runs the health check, and then:
+
+- keeps the GitHub Issue open and appends the latest diagnostics when the problem remains unresolved;
+- comments on and closes the same Issue when the health check passes;
+- removes the resolved incident and self-heal log files only after the resolution has been recorded remotely.
+
+The `logs` directory itself remains available for future diagnostics. Failed logs are not committed to the repository and are not stored in Git because `logs/` is intentionally ignored.
+
 ## Automatic GitHub incident reporting
 
 JAI can automatically create a GitHub Issue containing the failed bootstrap/self-heal logs. When the final health check passes, JAI comments on that same incident and closes it as resolved.
