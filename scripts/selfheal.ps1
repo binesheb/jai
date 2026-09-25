@@ -41,6 +41,23 @@ function Get-GitHubToken {
   return $null
 }
 function Read-LogTail([string]$Path,[int]$MaxChars=45000){ if(-not(Test-Path -LiteralPath $Path)){ return "(log file not found: $Path)" }; $text=Get-Content -LiteralPath $Path -Raw -ErrorAction SilentlyContinue; if($null -eq $text){ return "(unable to read log file: $Path)" }; if($text.Length -gt $MaxChars){ return "[log truncated]`n"+$text.Substring($text.Length-$MaxChars) }; return $text }
+function Ensure-Compose-Env {
+  $envFile=Join-Path $Repo ".env"
+  if(Test-Path -LiteralPath $envFile){ Log "Existing local .env found; preserving it."; return $true }
+  $bytes=New-Object byte[] 32
+  $rng=[Security.Cryptography.RandomNumberGenerator]::Create()
+  try{$rng.GetBytes($bytes)}finally{$rng.Dispose()}
+  $password=[Convert]::ToBase64String($bytes).Replace("+","-").Replace("/","_").Replace("=","")
+  @(
+    "JAI_POSTGRES_DB=jai"
+    "JAI_POSTGRES_USER=jai"
+    "JAI_POSTGRES_PASSWORD=$password"
+    "JAI_POSTGRES_PORT=5432"
+    "JAI_REDIS_PORT=6379"
+  ) | Set-Content -LiteralPath $envFile -Encoding UTF8
+  Log "Created missing local JAI .env with a generated PostgreSQL password."
+  return $true
+}
 function Save-State { if($script:State){ $script:State | ConvertTo-Json | Set-Content -LiteralPath $script:StateFile -Encoding UTF8 } }
 function Get-OpenIncident {
   $token=Get-GitHubToken; if([string]::IsNullOrWhiteSpace($token)){ return $null }
@@ -63,9 +80,12 @@ function Publish-LogToGitHub([string]$LocalPath) {
     $safe=[regex]::Replace($raw,'(?im)(authorization\s*:\s*bearer\s+)[^\s]+','$1[REDACTED]')
     $safe=[regex]::Replace($safe,'(?im)((?:password|passwd|secret|token|api[_-]?key)\s*[=:]\s*)[^\s]+','$1[REDACTED]')
     $content=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($safe))
-    $payload=@{message="chore: upload JAI log $name";content=$content;branch="main"}|ConvertTo-Json -Depth 5
     $uri="https://api.github.com/repos/$Repo/contents/$remotePath"
-    $result=Invoke-RestMethod -Method Put -Uri $uri -Headers $headers -Body $payload -ContentType "application/json"
+    $existing=$null
+    try{$existing=Invoke-RestMethod -Method Get -Uri ($uri+"?ref=main") -Headers $headers}catch{}
+    $payload=@{message="chore: upload JAI log $name";content=$content;branch="main"}
+    if($existing -and $existing.sha){$payload.sha=$existing.sha}
+    $result=Invoke-RestMethod -Method Put -Uri $uri -Headers $headers -Body ($payload|ConvertTo-Json -Depth 5) -ContentType "application/json"
     Log "JAI log uploaded to GitHub: $remotePath"
     return @{Path=$remotePath;HtmlUrl=$result.content.html_url;DownloadUrl="https://raw.githubusercontent.com/$Repo/main/$remotePath"}
   } catch { Log "GitHub log upload failed for $LocalPath : $($_.Exception.Message)" "WARN"; return $null }
@@ -253,6 +273,7 @@ try {
 } catch {}
 
 if(Docker-Ready -and (Test-Path (Join-Path $Repo "docker-compose.yml"))){
+  Ensure-Compose-Env | Out-Null
   Push-Location $Repo
   try {
     Invoke-Step "Checking Docker engine" { docker info } | Out-Null

@@ -137,9 +137,12 @@ function Publish-LogToGitHub([string]$LocalPath) {
     $safe = [regex]::Replace($safe, '(?im)((?:password|passwd|secret|token|api[_-]?key)\s*[=:]\s*)[^\s]+', '$1[REDACTED]')
     $bytes = [Text.Encoding]::UTF8.GetBytes($safe)
     $content = [Convert]::ToBase64String($bytes)
-    $payload = @{ message="chore: upload JAI log $name"; content=$content; branch="main" } | ConvertTo-Json -Depth 5
     $uri = "https://api.github.com/repos/$Repo/contents/$remotePath"
-    $result = Invoke-RestMethod -Method Put -Uri $uri -Headers $headers -Body $payload -ContentType "application/json"
+    $existing = $null
+    try { $existing = Invoke-RestMethod -Method Get -Uri ($uri + "?ref=main") -Headers $headers } catch {}
+    $payload = @{ message="chore: upload JAI log $name"; content=$content; branch="main" }
+    if($existing -and $existing.sha){ $payload.sha = $existing.sha }
+    $result = Invoke-RestMethod -Method Put -Uri $uri -Headers $headers -Body ($payload | ConvertTo-Json -Depth 5) -ContentType "application/json"
     Log "JAI log uploaded to GitHub: $remotePath"
     return @{ Path=$remotePath; HtmlUrl=$result.content.html_url; DownloadUrl="https://raw.githubusercontent.com/$Repo/main/$remotePath" }
   } catch {
@@ -250,6 +253,8 @@ function Install-RepositoryFromArchive {
       if (-not (Test-Path -LiteralPath $zip) -or (Get-Item -LiteralPath $zip).Length -lt 1024) {
         throw "GitHub source archive download was empty or incomplete."
       }
+      # Invoke-WebRequest is a PowerShell cmdlet; do not inherit a stale native command exit code.
+      $global:LASTEXITCODE = 0
     } -Attempts 3 -DelaySeconds 5
 
     Expand-Archive -LiteralPath $zip -DestinationPath $tempRoot -Force
