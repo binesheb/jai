@@ -13,6 +13,10 @@ $script:StateFile = Join-Path $Root "installation-state.json"
 $script:State = $null
 if(Test-Path -LiteralPath $script:StateFile){ try { $script:State=Get-Content -LiteralPath $script:StateFile -Raw | ConvertFrom-Json } catch {} }
 if([string]::IsNullOrWhiteSpace($IncidentLog) -and $script:State -and $script:State.IncidentLog){ $IncidentLog=$script:State.IncidentLog }
+if([string]::IsNullOrWhiteSpace($IncidentLog)){
+  $latest=Get-ChildItem -LiteralPath $LogDir -Filter "install-*.log" -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+  if($latest){ $IncidentLog=$latest.FullName }
+}
 
 function Log([string]$Message,[string]$Level="INFO") {
   "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff zzz') [$Level] $Message" | Tee-Object -FilePath $Log -Append
