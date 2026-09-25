@@ -109,13 +109,37 @@ try {
   }
   Log "Using Git executable: $GitExe"
 
-  if (-not (Has "wsl")) {
-    StepStart "Installing WSL"
-    Run "wsl --install" { wsl --install --no-distribution }
-    $State.WslInstalledByJAI=$true; SaveState
-    Log "WSL installation requested. Windows restart may be required." "WARN"
-    StepEnd "Installing WSL"
-  } else { Log "WSL already installed; checking status."; Run "wsl --status" { wsl --status } }
+  Refresh-Path
+  $wslExe = Resolve-Tool "wsl" @("$env:SystemRoot\System32\wsl.exe")
+  $wslReady = $false
+  if ($wslExe) {
+    Log "WSL executable found: $wslExe"
+    try {
+      $wslStatus = & $wslExe --status 2>&1
+      $wslExit = $LASTEXITCODE
+      $wslStatus | ForEach-Object { Log "wsl --status :: $($_.ToString())" }
+      if ($wslExit -eq 0) { $wslReady = $true; Log "WSL is installed and responding normally." }
+      else { Log "WSL executable exists but WSL is not fully installed/configured. Exit code: $wslExit" "WARN" }
+    } catch { Log "WSL status check failed: $($_.Exception.Message)" "WARN" }
+  }
+  if (-not $wslReady) {
+    StepStart "Installing/configuring WSL2"
+    if (-not $wslExe) { throw "wsl.exe could not be found. Windows WSL support may be unavailable." }
+    Log "Running: wsl --install --no-distribution"
+    try {
+      & $wslExe --install --no-distribution 2>&1 | ForEach-Object { Log "wsl --install :: $($_.ToString())"; Write-Host $_ }
+      $wslInstallExit = $LASTEXITCODE
+      Log "wsl --install exit code: $wslInstallExit"
+      $State.WslInstalledByJAI=$true; SaveState
+      if ($wslInstallExit -ne 0 -and $wslInstallExit -ne 3010) {
+        throw "WSL installation returned exit code $wslInstallExit."
+      }
+      Log "WSL installation/configuration requested. A Windows restart may be required." "WARN"
+    } catch { Log "WSL installation failed: $($_.Exception.Message)" "ERROR"; throw }
+    StepEnd "Installing/configuring WSL2"
+  } else {
+    Log "WSL already installed and healthy; skipping installation."
+  }
 
   if (-not (Has "docker")) {
     StepStart "Installing Docker Desktop"
