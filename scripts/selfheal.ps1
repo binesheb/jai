@@ -12,6 +12,7 @@ $Log = Join-Path $LogDir ("selfheal-" + (Get-Date -Format "yyyyMMdd-HHmmss") + "
 $script:StateFile = Join-Path $Root "installation-state.json"
 $script:State = $null
 if(Test-Path -LiteralPath $script:StateFile){ try { $script:State=Get-Content -LiteralPath $script:StateFile -Raw | ConvertFrom-Json } catch {} }
+if([string]::IsNullOrWhiteSpace($IncidentLog) -and $script:State -and $script:State.IncidentLog){ $IncidentLog=$script:State.IncidentLog }
 
 function Log([string]$Message,[string]$Level="INFO") {
   "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff zzz') [$Level] $Message" | Tee-Object -FilePath $Log -Append
