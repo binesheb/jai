@@ -157,13 +157,11 @@ function Publish-LogToGitHub([string]$LocalPath) {
     return $null
   }
 }
-function Publish-AllLogsToGitHub {
+function Publish-LogsForIncident([string]$IncidentLogPath) {
   $results = @()
-  if (-not (Test-Path -LiteralPath $LogDir)) { return $results }
-  foreach ($file in @(Get-ChildItem -LiteralPath $LogDir -Filter "*.log" -File -ErrorAction SilentlyContinue)) {
-    $result = Publish-LogToGitHub $file.FullName
-    if ($result) { $results += $result }
-  }
+  if (-not (Test-Path -LiteralPath $IncidentLogPath)) { return $results }
+  $result = Publish-LogToGitHub $IncidentLogPath
+  if ($result) { $results += $result }
   return $results
 }
 
@@ -173,7 +171,7 @@ function Publish-Incident {
   if ([string]::IsNullOrWhiteSpace($token)) { Log "GitHub incident publishing skipped: no token or gh authentication found." "WARN"; return $false }
   $headers = @{ Authorization="Bearer $token"; Accept="application/vnd.github+json"; "X-GitHub-Api-Version"="2022-11-28" }
   $logPath = $Log
-  $githubLogs = @(Publish-AllLogsToGitHub)
+  $githubLogs = @(Publish-LogsForIncident $logPath)
   $githubLogText = if ($githubLogs.Count -gt 0) { ($githubLogs | ForEach-Object { "[GitHub log]($($_.HtmlUrl)) — raw: $($_.DownloadUrl)" }) -join "`n" } else { "GitHub log upload was not available." }
   $body = "## JAI automatic bootstrap incident`n`n**Status:** UNRESOLVED`n**Host:** $env:COMPUTERNAME`n**User:** $env:USERNAME`n**Time:** $(Get-Date -Format o)`n`n### Failure summary`n$FailureSummary`n`n### Bootstrap log`nPath: $logPath`n`n$githubLogText`n`n````text`n$(Read-LogText $logPath)`n```` `n`nThis issue was created automatically by JAI. The bootstrap log is retained locally until the incident is resolved."
   try {
@@ -802,8 +800,6 @@ try {
 } catch {
   Log "JAI bootstrap FAILED: $($_.Exception.Message)" "ERROR"
   Log "Stack: $($_.ScriptStackTrace)" "ERROR"
-  # Upload every log currently present before opening/updating the incident.
-  @(Publish-AllLogsToGitHub) | Out-Null
   Publish-Incident -FailureSummary $_.Exception.Message | Out-Null
   Write-Host ""
   Write-Host "JAI bootstrap FAILED. Attempting automatic recovery..." -ForegroundColor Yellow
