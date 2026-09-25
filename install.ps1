@@ -66,46 +66,33 @@ function Wait-ForDocker([int]$TimeoutSeconds = 180) {
   if (-not (Has "docker")) {
     StepStart "Installing Docker Desktop"
     Run "winget Docker.DockerDesktop" { winget install --id Docker.DockerDesktop -e --source winget --accept-source-agreements --accept-package-agreements --disable-interactivity }
-    $State.DockerInstalledByJAI=$true; SaveState
-    Refresh-Path
+    $State.DockerInstalledByJAI=$true;SaveState;Refresh-Path
     StepEnd "Installing Docker Desktop"
   } else { Log "Docker CLI already installed; skipping installation." }
 
   StepStart "Preparing JAI repository"
-  if (-not (Test-Path (Join-Path $RepoDir ".git"))) {
-    if (Test-Path $RepoDir) {
-      Log "Removing incomplete repository directory: $RepoDir" "WARN"
-      Remove-Item -Recurse -Force $RepoDir
-    }
-    Run "git clone" { & $GitExe clone "https://github.com/$Repo.git" $RepoDir }
-  } else {
-    Run "git fetch" { & $GitExe -C $RepoDir fetch --all --prune }
-    Run "git pull --ff-only" { & $GitExe -C $RepoDir pull --ff-only }
-  }
-  $commit = & $GitExe -C $RepoDir rev-parse HEAD
-  $State.Commit=$commit; SaveState
-  Log "JAI source revision: $commit"
+  if(-not(Test-Path (Join-Path $RepoDir ".git"))){
+    if(Test-Path $RepoDir){Log "Removing incomplete repository directory: $RepoDir" "WARN";Remove-Item -Recurse -Force $RepoDir}
+    Run "git clone" {& $GitExe clone "https://github.com/$Repo.git" $RepoDir}
+  } else { Run "git fetch" {& $GitExe -C $RepoDir fetch --all --prune};Run "git pull --ff-only" {& $GitExe -C $RepoDir pull --ff-only} }
+  $commit=& $GitExe -C $RepoDir rev-parse HEAD;$State.Commit=$commit;SaveState;Log "JAI source revision: $commit"
   StepEnd "Preparing JAI repository"
 
   StepStart "Starting Docker Engine"
-  if (-not (Wait-ForDocker 180)) {
-    if (Test-PendingReboot) {
-      Log "Docker is not ready and Windows reports a pending reboot." "WARN"
-      Write-Host "RESTART REQUIRED: Docker/WSL needs Windows to restart. Run the same JAI command again after reboot." -ForegroundColor Yellow
-      exit 3010
-    }
+  if(-not(Wait-ForDocker 180)){
+    if(Test-PendingReboot){Log "Windows restart appears required." "WARN";Write-Host "RESTART REQUIRED: restart Windows, then run the same JAI command again." -ForegroundColor Yellow;exit 3010}
     throw "Docker Engine did not become ready within 180 seconds. Start Docker Desktop and rerun JAI."
   }
   StepEnd "Starting Docker Engine"
 
   StepStart "Configuring JAI infrastructure"
   Ensure-ComposeEnv
-  $compose = Join-Path $RepoDir "docker-compose.yml"
-  if (-not (Test-Path $compose)) { throw "docker-compose.yml is missing from the JAI repository." }
-  Run "docker compose config" { Push-Location $RepoDir; try { docker compose config } finally { Pop-Location } }
-  Run "docker compose pull" { Push-Location $RepoDir; try { docker compose pull } finally { Pop-Location } }
-  Run "docker compose up -d" { Push-Location $RepoDir; try { docker compose up -d } finally { Pop-Location } }
-  Run "docker compose ps" { Push-Location $RepoDir; try { docker compose ps } finally { Pop-Location } }
+  $compose=Join-Path $RepoDir "docker-compose.yml"
+  if(-not(Test-Path $compose)){throw "docker-compose.yml is missing."}
+  Run "docker compose config" {Push-Location $RepoDir;try{docker compose config}finally{Pop-Location}}
+  Run "docker compose pull" {Push-Location $RepoDir;try{docker compose pull}finally{Pop-Location}}
+  Run "docker compose up -d" {Push-Location $RepoDir;try{docker compose up -d}finally{Pop-Location}}
+  Run "docker compose ps" {Push-Location $RepoDir;try{docker compose ps}finally{Pop-Location}}
   StepEnd "Configuring JAI infrastructure"
 
   $elapsed = (Get-Date) - $StartTime
