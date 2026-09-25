@@ -898,10 +898,38 @@ try {
   }
 
   try {
-    Run-With-Retry "docker compose up -d --wait" {
+    Run-With-Retry "docker compose up -d" {
       Push-Location $RepoDir
-      try { docker compose up -d --wait --wait-timeout 180 } finally { Pop-Location }
+      try { docker compose up -d } finally { Pop-Location }
     } 3 15
+
+    # Do not rely on Compose's --wait exit status on Docker Desktop. Explicitly
+    # evaluate each service's Docker health state and require both services to
+    # become healthy before bootstrap is considered successful.
+    $healthDeadline = (Get-Date).AddSeconds(180)
+    $healthy = $false
+    while ((Get-Date) -lt $healthDeadline) {
+      $states = @()
+      foreach ($container in @("repo-postgres-1","repo-redis-1")) {
+        try {
+          $inspectJson = & docker inspect --format "{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}no-health{{end}}" $container 2>&1
+          $stateText = ($inspectJson | Select-Object -First 1).ToString()
+          $states += "$container=$stateText"
+        } catch {
+          $states += "$container=inspect-failed"
+        }
+      }
+      Log "SERVICE HEALTH POLL :: $($states -join '; ')"
+      $healthy = ($states.Count -eq 2 -and
+        $states[0] -match "=$([regex]::Escape('running'))\|healthy$" -and
+        $states[1] -match "=$([regex]::Escape('running'))\|healthy$")
+      if ($healthy) { break }
+      Start-Sleep -Seconds 5
+    }
+    if (-not $healthy) {
+      throw "JAI services did not reach healthy state within 180 seconds."
+    }
+    Log "JAI service health gate PASSED: postgres and redis are healthy."
   } catch {
     Log "docker compose up -d --wait failed. Collecting Docker volume/container diagnostics before recovery." "ERROR"
     try {
