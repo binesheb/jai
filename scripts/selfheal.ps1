@@ -55,7 +55,12 @@ function Publish-GitHubIncident([bool]$Resolved) {
   $token=Get-GitHubToken; if([string]::IsNullOrWhiteSpace($token)){ Log "GitHub incident publishing skipped: no token or gh authentication found." "WARN"; return }
   $headers=@{Authorization="Bearer $token";Accept="application/vnd.github+json";"X-GitHub-Api-Version"="2022-11-28"}
   $issue=$null
-  if($script:State -and $script:State.IncidentIssueNumber){ try { $issue=Invoke-RestMethod -Method Get -Uri "https://api.github.com/repos/binesheb/jai/issues/$($script:State.IncidentIssueNumber)" -Headers $headers } catch {} }
+  if($script:State -and $script:State.IncidentIssueNumber){
+    try {
+      $issue=Invoke-RestMethod -Method Get -Uri "https://api.github.com/repos/binesheb/jai/issues/$($script:State.IncidentIssueNumber)" -Headers $headers
+      if($issue.state -ne "open" -or $issue.pull_request){ $issue=$null }
+    } catch { $issue=$null }
+  }
   if(-not $issue){ $issue=Get-OpenIncident }
   if(-not $Resolved -and -not $issue){
     $incident=Read-LogTail $IncidentLog
