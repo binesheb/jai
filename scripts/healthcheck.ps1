@@ -12,7 +12,7 @@ function Check([string]$name,[scriptblock]$action){
     & $action 2>&1 | ForEach-Object { Log "$name :: $($_.ToString())" }
     if($LASTEXITCODE -and $LASTEXITCODE -ne 0){ throw "Exit code $LASTEXITCODE" }
     Log "${name}: OK"
-  } catch { Log "$name: FAIL :: $($_.Exception.Message)" "ERROR"; $script:failed=$true }
+  } catch { Log ("{0}: FAIL :: {1}" -f $name, $_.Exception.Message) "ERROR"; $script:failed=$true }
 }
 Log "JAI health check started."
 $env:Path = "$([Environment]::GetEnvironmentVariable("Path","Machine"));$([Environment]::GetEnvironmentVariable("Path","User"))"
