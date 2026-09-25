@@ -3,9 +3,7 @@ $ErrorActionPreference = "Continue"
 Set-StrictMode -Version Latest
 
 $Root = Join-Path $env:ProgramData "JAI"
-$LogDir = Join-Path $Root "logs"
-New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
-$Log = Join-Path $LogDir ("uninstall-" + (Get-Date -Format "yyyyMMdd-HHmmss") + ".log")
+$Log = Join-Path $env:TEMP ("JAI-uninstall-" + (Get-Date -Format "yyyyMMdd-HHmmss") + "-" + [guid]::NewGuid().ToString("N") + ".log")
 $RepoDir = Join-Path $Root "repo"
 $StateFile = Join-Path $Root "installation-state.json"
 
@@ -91,6 +89,5 @@ Write-Host ""
 Write-Host "JAI uninstall completed." -ForegroundColor Green
 Write-Host "JAI-specific files, containers, volumes and configuration have been removed."
 Log "JAI uninstall completed."
-Write-Host "Cleanup log: $Log" -ForegroundColor DarkGray
-# The log is itself removed to honor the clean-uninstall requirement.
+# The uninstall log is temporary and is removed before the command exits.
 Remove-Item -LiteralPath $Log -Force -ErrorAction SilentlyContinue
