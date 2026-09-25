@@ -123,14 +123,14 @@ function Read-LogText([string]$Path,[int]$MaxChars=50000) {
   if ($text.Length -gt $MaxChars) { return "[log truncated]`n" + $text.Substring($text.Length-$MaxChars) }
   return $text
 }
-function Publish-LogToGitHub([string]$LocalPath) {
+function Publish-LogToGitHub([string]$LocalPath, [string]$RemoteFolder = "logs/incidents") {
   if (-not (Test-Path -LiteralPath $LocalPath)) { return $null }
   $token = Get-GitHubToken
   if ([string]::IsNullOrWhiteSpace($token)) { Log "GitHub log upload skipped: no token." "WARN"; return $null }
   $headers = @{ Authorization="Bearer $token"; Accept="application/vnd.github+json"; "X-GitHub-Api-Version"="2022-11-28" }
   try {
     $name = Split-Path -Leaf $LocalPath
-    $remotePath = "logs/incidents/$env:COMPUTERNAME/$name"
+    $remotePath = "$RemoteFolder/$env:COMPUTERNAME/$name"
     $raw = Get-Content -LiteralPath $LocalPath -Raw -ErrorAction Stop
     # Logs may contain command output with credentials. Redact common secret patterns before upload.
     $safe = [regex]::Replace($raw, '(?im)(authorization\s*:\s*bearer\s+)[^\s]+', '$1[REDACTED]')
@@ -163,6 +163,11 @@ function Publish-LogsForIncident([string]$IncidentLogPath) {
   $result = Publish-LogToGitHub $IncidentLogPath
   if ($result) { $results += $result }
   return $results
+}
+
+function Publish-CompletedRunLog([string]$RunLogPath) {
+  if (-not (Test-Path -LiteralPath $RunLogPath)) { return $null }
+  return Publish-LogToGitHub $RunLogPath "logs/runs"
 }
 
 function Publish-Incident {
@@ -439,6 +444,8 @@ try {
   Write-Host " Detailed installation logging enabled" -ForegroundColor Cyan
   Write-Host "========================================" -ForegroundColor Cyan
   Write-Host "Live log: $Log" -ForegroundColor Yellow
+  Write-Host "Completed runs: GitHub logs/runs/$env:COMPUTERNAME/" -ForegroundColor DarkGray
+  Write-Host "Failed runs: GitHub logs/incidents/$env:COMPUTERNAME/" -ForegroundColor DarkGray
 
   Log "JAI bootstrap started."
   Refresh-Path
@@ -452,7 +459,46 @@ try {
   Log "OS: $($os.Caption) build $($os.BuildNumber)"
   Log "Architecture: $($os.OSArchitecture)"
   Log "RAM_GB: $([math]::Round($cs.TotalPhysicalMemory / 1GB, 1))"
+  Log "CPU: $((Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty Name))"
+  Log "CPU_Cores: $((Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty NumberOfCores))"
+  Log "CPU_LogicalProcessors: $((Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty NumberOfLogicalProcessors))"
   Log "System drive free GB: $([math]::Round((Get-PSDrive C).Free / 1GB, 1))"
+  Log "System drive total GB: $([math]::Round(((Get-PSDrive C).Used + (Get-PSDrive C).Free) / 1GB, 1))"
+  try {
+    Get-CimInstance Win32_VideoController | ForEach-Object {
+      Log "GPU: $($_.Name) | VRAM_GB=$([math]::Round($_.AdapterRAM / 1GB, 2)) | Driver=$($_.DriverVersion)"
+    }
+  } catch {
+    Log "GPU inventory failed: $($_.Exception.Message)" "WARN"
+  }
+  try {
+    Get-NetAdapter | Where-Object Status -eq "Up" | ForEach-Object {
+      Log "NETWORK: $($_.Name) | $($_.InterfaceDescription) | LinkSpeed=$($_.LinkSpeed)"
+    }
+  } catch {
+    Log "Network inventory failed: $($_.Exception.Message)" "WARN"
+  }
+  try {
+    $wslVersion = & wsl.exe --version 2>&1
+    $wslVersion | ForEach-Object { Log "WSL VERSION :: $($_.ToString())" }
+  } catch {
+    Log "WSL version inventory failed: $($_.Exception.Message)" "WARN"
+  }
+  try {
+    $dockerVersion = & docker version --format "{{json .}}" 2>&1
+    $dockerVersion | ForEach-Object { Log "DOCKER VERSION :: $($_.ToString())" }
+  } catch {
+    Log "Docker version inventory failed: $($_.Exception.Message)" "WARN"
+  }
+  try {
+    $gpuTools = @("nvidia-smi","rocminfo","clinfo") | Where-Object { Has $_ }
+    foreach ($tool in $gpuTools) {
+      $toolOutput = & $tool 2>&1
+      $toolOutput | Select-Object -First 40 | ForEach-Object { Log "$tool :: $($_.ToString())" }
+    }
+  } catch {
+    Log "Optional GPU tool inventory failed: $($_.Exception.Message)" "WARN"
+  }
   Log "Repository: https://github.com/$Repo"
 
   Step-Start "Detecting prerequisites"
@@ -775,6 +821,13 @@ try {
     try { docker compose ps } finally { Pop-Location }
   }
 
+  try {
+    $containers = & docker ps --format "{{.Names}} | {{.Status}} | {{.Ports}}" 2>&1
+    $containers | ForEach-Object { Log "DOCKER CONTAINER :: $($_.ToString())" }
+  } catch {
+    Log "Docker container snapshot failed: $($_.Exception.Message)" "WARN"
+  }
+
   Step-End "Configuring JAI infrastructure"
 
   Step-Start "Running JAI health check"
@@ -791,12 +844,27 @@ try {
   Save-State
   Log "JAI bootstrap completed successfully in $([math]::Round($elapsed.TotalSeconds, 1)) seconds."
 
+  # Every completed installation run is uploaded to GitHub before local cleanup.
+  # This gives the operator a persistent, sanitized diagnostic trail even when
+  # the installation succeeds and there is no incident issue.
+  $uploadedRun = Publish-CompletedRunLog $Log
+  if ($uploadedRun) {
+    Log "Completed-run log published to GitHub: $($uploadedRun.Path)"
+  } else {
+    Log "Completed-run log could not be published to GitHub; retaining the local log." "WARN"
+  }
+
   Write-Host ""
   Write-Host "JAI bootstrap completed successfully." -ForegroundColor Green
   Write-Host "Repository: $RepoDir"
   Write-Host "Infrastructure: Docker Compose services started."
-  Write-Host "Installation log cleared because bootstrap completed successfully." -ForegroundColor Green
-  Remove-Item -LiteralPath $Log -Force -ErrorAction SilentlyContinue
+  if ($uploadedRun) {
+    Write-Host "Installation log uploaded to GitHub: $($uploadedRun.Path)" -ForegroundColor Green
+    Write-Host "Local installation log cleared after confirmed upload." -ForegroundColor Green
+    Remove-Item -LiteralPath $Log -Force -ErrorAction SilentlyContinue
+  } else {
+    Write-Host "Installation log retained locally because GitHub upload was not confirmed: $Log" -ForegroundColor Yellow
+  }
 } catch {
   Log "JAI bootstrap FAILED: $($_.Exception.Message)" "ERROR"
   Log "Stack: $($_.ScriptStackTrace)" "ERROR"
