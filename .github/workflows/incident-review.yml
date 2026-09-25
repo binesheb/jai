@@ -10,29 +10,20 @@ permissions:
 
 jobs:
   review:
+    if: startsWith(github.event.issue.title, 'JAI Bootstrap Incident -')
     runs-on: ubuntu-latest
     steps:
       - name: Rewrite incident log into a resolution checklist
         env:
           GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
         shell: python
         run: |
-          import os, re, subprocess, json
-          from pathlib import Path
+          import os, re, subprocess
 
-          files = list(Path("logs/incidents").glob("issue-*.log"))
-          if not files:
-              print("No incident logs found.")
-              raise SystemExit(0)
-
-          path = max(files, key=lambda p: p.stat().st_mtime)
-          m = re.search(r"issue-(\d+)-", path.name)
-          if not m:
-              print(f"Cannot determine issue number from {path}")
-              raise SystemExit(0)
-          issue = m.group(1)
-
-          text = path.read_text(encoding="utf-8", errors="replace")
+          issue = os.environ["ISSUE_NUMBER"]
+          text = os.environ.get("ISSUE_BODY", "")
           lower = text.lower()
 
           checks = []
@@ -58,17 +49,14 @@ jobs:
           if not checks:
               checks.append(("failure", "Review and resolve the reported bootstrap failure"))
 
-          current = text
-
           start = "<!-- JAI_INCIDENT_CHECKLIST_START -->"
           end = "<!-- JAI_INCIDENT_CHECKLIST_END -->"
           lines = [
               start,
               "## JAI Resolution Checklist",
               "",
-              "GitHub Actions generated this checklist from the uploaded incident log. "
-              "Each item is independently reviewable and should be cleared by Self-Heal, "
-              "a commit, or a pull request.",
+              "GitHub Actions generated this checklist from the JAI installer log in this Issue.",
+              "Each item is independently reviewable and should be cleared by Self-Heal, a commit, or a pull request.",
               ""
           ]
           for _, label in checks:
@@ -76,6 +64,7 @@ jobs:
           lines += ["", "Source: JAI installer incident log stored in this Issue.", "", end]
           section = "\n".join(lines)
 
+          current = text
           if start in current and end in current:
               current = re.sub(re.escape(start) + r".*?" + re.escape(end),
                                lambda _: section, current, flags=re.S)
@@ -88,4 +77,4 @@ jobs:
               "-f", f"body={current}"
           ], check=True)
 
-          print(f"Updated issue #{issue} from installer incident log")
+          print(f"Updated issue #{issue} with a machine-generated resolution checklist.")
