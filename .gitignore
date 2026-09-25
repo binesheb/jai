@@ -1,0 +1,17 @@
+ .env
+.env.*
+!.env.example
+*.pem
+*.key
+data/
+models/
+logs/
+backups/
+__pycache__/
+.venv/
+.pytest_cache/
+node_modules/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
