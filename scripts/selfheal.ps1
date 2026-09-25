@@ -55,7 +55,16 @@ function Publish-GitHubIncident([bool]$Resolved) {
     try { $payload=@{title="JAI Bootstrap Incident - $env:COMPUTERNAME";body=$body}|ConvertTo-Json -Depth 5; $issue=Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/binesheb/jai/issues" -Headers $headers -Body $payload -ContentType "application/json"; $script:State.IncidentIssueNumber=$issue.number; $script:State.IncidentLog=$IncidentLog; Save-State; Log "GitHub incident issue created: #$($issue.number)" } catch { Log "GitHub incident publishing failed: $($_.Exception.Message)" "WARN"; return }
   }
   if($Resolved -and $issue){
-    try { $comment=@{body="JAI Self-Heal completed successfully. Final health check passed. The failure described in the attached logs has been cleared."}|ConvertTo-Json; Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/binesheb/jai/issues/$($issue.number)/comments" -Headers $headers -Body $comment -ContentType "application/json" | Out-Null; $close=@{state="closed"}|ConvertTo-Json; Invoke-RestMethod -Method Patch -Uri "https://api.github.com/repos/binesheb/jai/issues/$($issue.number)" -Headers $headers -Body $close -ContentType "application/json" | Out-Null; Log "GitHub incident issue #$($issue.number) closed as resolved." } catch { Log "GitHub incident resolution failed: $($_.Exception.Message)" "WARN"; return }
+    try {
+      $comment=@{body="JAI Self-Heal completed successfully. Final health check passed. The failure described in the attached logs has been cleared. All generated resolution checklist items are being marked complete."}|ConvertTo-Json
+      Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/binesheb/jai/issues/$($issue.number)/comments" -Headers $headers -Body $comment -ContentType "application/json" | Out-Null
+      $current=Invoke-RestMethod -Method Get -Uri "https://api.github.com/repos/binesheb/jai/issues/$($issue.number)" -Headers $headers
+      $body=$current.body
+      if($body){ $body=[regex]::Replace($body,"(?m)^- \[ \] ","- [x] ") }
+      $update=@{body=$body;state="closed";state_reason="completed"}|ConvertTo-Json -Depth 5
+      Invoke-RestMethod -Method Patch -Uri "https://api.github.com/repos/binesheb/jai/issues/$($issue.number)" -Headers $headers -Body $update -ContentType "application/json" | Out-Null
+      Log "GitHub incident issue #$($issue.number) checklist completed and issue closed as resolved."
+    } catch { Log "GitHub incident resolution failed: $($_.Exception.Message)" "WARN"; return }
     $logsToRemove=@($IncidentLog,$Log) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -Unique
     foreach($p in $logsToRemove){ Log "Resolved incident log scheduled for cleanup: $p" }
     $script:State.IncidentIssueNumber=$null; $script:State.IncidentLog=$null; Save-State
