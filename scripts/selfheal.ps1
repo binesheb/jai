@@ -131,15 +131,19 @@ if(Docker-Ready -and (Test-Path (Join-Path $Repo "docker-compose.yml"))){
   } finally { Pop-Location }
 }
 
-$health=Join-Path $Repo "scriptshealthcheck.ps1"
+$health=Join-Path $Repo "scripts\healthcheck.ps1"
+$healthPassed=$false
 if(Test-Path $health){
   & $health
-  if($LASTEXITCODE -eq 0){ Log "SELF-HEAL SUCCESS: JAI health check passed."; exit 0 }
+  if($LASTEXITCODE -eq 0){ Log "SELF-HEAL SUCCESS: JAI health check passed."; $healthPassed=$true }
   Log "SELF-HEAL could not fully repair JAI. Manual diagnosis may be required." "WARN"
 }
-if($fixed){
+if($healthPassed){
   Publish-GitHubIncident $true
   exit 0
+} elseif($fixed){
+  Publish-GitHubIncident $false
+  exit 2
 } else {
   Publish-GitHubIncident $false
   exit 1
