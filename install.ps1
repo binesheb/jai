@@ -425,6 +425,16 @@ try {
 
   Step-End "Configuring JAI infrastructure"
 
+  Step-Start "Running JAI health check"
+  $healthcheck = Join-Path $RepoDir "scripts\healthcheck.ps1"
+  if (-not (Test-Path -LiteralPath $healthcheck)) {
+    throw "JAI healthcheck script is missing."
+  }
+  Run-Command "JAI healthcheck" {
+    & $healthcheck
+  }
+  Step-End "Running JAI health check"
+
   $elapsed = (Get-Date) - $StartTime
   Save-State
   Log "JAI bootstrap completed successfully in $([math]::Round($elapsed.TotalSeconds, 1)) seconds."
