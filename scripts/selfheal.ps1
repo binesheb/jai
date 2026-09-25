@@ -56,8 +56,10 @@ function Publish-GitHubIncident([bool]$Resolved) {
   }
   if($Resolved -and $issue){
     try { $comment=@{body="JAI Self-Heal completed successfully. Final health check passed. The failure described in the attached logs has been cleared."}|ConvertTo-Json; Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/binesheb/jai/issues/$($issue.number)/comments" -Headers $headers -Body $comment -ContentType "application/json" | Out-Null; $close=@{state="closed"}|ConvertTo-Json; Invoke-RestMethod -Method Patch -Uri "https://api.github.com/repos/binesheb/jai/issues/$($issue.number)" -Headers $headers -Body $close -ContentType "application/json" | Out-Null; Log "GitHub incident issue #$($issue.number) closed as resolved." } catch { Log "GitHub incident resolution failed: $($_.Exception.Message)" "WARN"; return }
-    foreach($p in @($IncidentLog,$Log)){ if($p -and (Test-Path -LiteralPath $p)){ Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue; Log "Removed resolved incident log: $p" } }
+    $logsToRemove=@($IncidentLog,$Log) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -Unique
+    foreach($p in $logsToRemove){ Log "Resolved incident log scheduled for cleanup: $p" }
     $script:State.IncidentIssueNumber=$null; $script:State.IncidentLog=$null; Save-State
+    foreach($p in $logsToRemove){ Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }
   } elseif(-not $Resolved -and $issue){
     try { $comment=@{body="JAI Self-Heal ran again but the environment is still not healthy. Latest self-heal log: $Log"}|ConvertTo-Json; Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/binesheb/jai/issues/$($issue.number)/comments" -Headers $headers -Body $comment -ContentType "application/json" | Out-Null } catch { Log "GitHub incident update failed: $($_.Exception.Message)" "WARN" }
   }
