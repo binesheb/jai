@@ -72,13 +72,14 @@ function Ensure-GitHubAuthentication {
     Write-Host "========================================" -ForegroundColor Cyan
     Write-Host " JAI - GITHUB AUTHENTICATION" -ForegroundColor Cyan
     Write-Host "========================================" -ForegroundColor Cyan
-    Write-Host "JAI uses GitHub to report failed installations, upload diagnostics as Issues, and track Self-Heal."
-    Write-Host "GitHub authentication is optional for installation, but recommended for automatic error reporting." -ForegroundColor Yellow
+    Write-Host "JAI will automatically start GitHub authentication so failed installations can report diagnostics and Self-Heal can update the same Issue." -ForegroundColor Yellow
+    Write-Host "Complete the GitHub browser/device authorization when prompted." -ForegroundColor Yellow
+    Write-Host "Set JAI_SKIP_GITHUB_AUTH=1 before installation if this machine must run without GitHub authentication." -ForegroundColor DarkGray
     Write-Host ""
-    $answer = Read-Host "Authenticate GitHub now? [Y/N]"
-    if ($answer -match "^[Yy]$") {
-      Log "Starting interactive GitHub CLI authentication."
-      Write-Host "A browser window may open. Complete the GitHub sign-in and authorization there." -ForegroundColor Yellow
+    if ([Environment]::GetEnvironmentVariable("JAI_SKIP_GITHUB_AUTH","Process") -eq "1" -or [Environment]::GetEnvironmentVariable("JAI_SKIP_GITHUB_AUTH","User") -eq "1" -or [Environment]::GetEnvironmentVariable("JAI_SKIP_GITHUB_AUTH","Machine") -eq "1") {
+      Log "JAI_SKIP_GITHUB_AUTH=1; skipping interactive GitHub authentication." "WARN"
+    } else {
+      Log "Starting automatic interactive GitHub CLI authentication."
       try {
         & $gh.Source auth login --hostname github.com --git-protocol https --web
         if ($LASTEXITCODE -ne 0) { throw "GitHub CLI authentication returned exit code $LASTEXITCODE." }
@@ -86,8 +87,6 @@ function Ensure-GitHubAuthentication {
         Log "GitHub authentication failed: $($_.Exception.Message)" "WARN"
         Write-Host "GitHub authentication was not completed. JAI will continue without automatic incident reporting." -ForegroundColor Yellow
       }
-    } else {
-      Log "User declined GitHub authentication. Automatic incident reporting will remain unavailable until gh is authenticated." "WARN"
     }
   }
 
