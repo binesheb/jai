@@ -79,6 +79,41 @@ function Publish-AllLogsToGitHub {
   }
   return $results
 }
+function Finalize-ResolvedGitHubLogs([int]$IssueNumber) {
+  $token=Get-GitHubToken
+  if([string]::IsNullOrWhiteSpace($token)){ Log "GitHub resolved-log cleanup skipped: no token." "WARN"; return }
+  $headers=@{Authorization="Bearer $token";Accept="application/vnd.github+json";"X-GitHub-Api-Version"="2022-11-28"}
+  $base="logs/incidents/$env:COMPUTERNAME"
+  try {
+    $items=Invoke-RestMethod -Method Get -Uri "https://api.github.com/repos/$Repo/contents/$base?ref=main" -Headers $headers
+    $logs=@($items | Where-Object { $_.type -eq "file" -and $_.name -like "*.log" })
+    foreach($item in $logs){
+      try {
+        $payload=@{message="chore: remove resolved raw JAI log $($item.name)";sha=$item.sha;branch="main"}|ConvertTo-Json
+        Invoke-RestMethod -Method Delete -Uri $item.url -Headers $headers -Body $payload -ContentType "application/json" | Out-Null
+        Log "Removed resolved raw GitHub log: $($item.path)"
+      } catch { Log "Could not remove resolved GitHub log $($item.path): $($_.Exception.Message)" "WARN" }
+    }
+    $summaryName="resolved-$((Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss'))-issue-$IssueNumber.md"
+    $summaryPath="$base/$summaryName"
+    $summary=@"
+# JAI Incident Resolution
+
+- Host: $env:COMPUTERNAME
+- Issue: #$IssueNumber
+- Resolved: $((Get-Date).ToUniversalTime().ToString("o"))
+- Status: health check passed
+- Raw diagnostic logs: removed after resolution
+- Detailed diagnosis: recorded on GitHub Issue #$IssueNumber
+
+This file is intentionally a minimal audit marker. Raw logs are not retained after successful resolution.
+"@
+    $payload=@{message="chore: record resolved JAI incident #$IssueNumber";content=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($summary));branch="main"}|ConvertTo-Json -Depth 5
+    Invoke-RestMethod -Method Put -Uri "https://api.github.com/repos/$Repo/contents/$summaryPath" -Headers $headers -Body $payload -ContentType "application/json" | Out-Null
+    Log "Created minimal resolved-incident audit marker: $summaryPath"
+  } catch { Log "Resolved GitHub log finalization failed: $($_.Exception.Message)" "WARN" }
+}
+
 function Remove-LogFromGitHub([string]$LocalPath) {
   if([string]::IsNullOrWhiteSpace($LocalPath)){ return }
   $token=Get-GitHubToken
@@ -128,7 +163,8 @@ function Publish-GitHubIncident([bool]$Resolved) {
     $logsToRemove=@($IncidentLog,$Log) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -Unique
     foreach($p in $logsToRemove){ Log "Resolved incident log scheduled for cleanup: $p" }
     $script:State.IncidentIssueNumber=$null; $script:State.IncidentLog=$null; Save-State
-    foreach($p in $logsToRemove){ Remove-LogFromGitHub $p; Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }
+    Finalize-ResolvedGitHubLogs $issue.number
+    foreach($p in $logsToRemove){ Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }
   } elseif(-not $Resolved -and $issue){
     try { $comment=@{body="JAI Self-Heal ran again but the environment is still not healthy.`n`nLatest GitHub logs:`n$incidentLinks"}|ConvertTo-Json; Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/binesheb/jai/issues/$($issue.number)/comments" -Headers $headers -Body $comment -ContentType "application/json" | Out-Null } catch { Log "GitHub incident update failed: $($_.Exception.Message)" "WARN" }
   }
