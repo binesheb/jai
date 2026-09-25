@@ -72,7 +72,7 @@ function Docker-Ready {
 }
 function Start-Docker {
   Refresh-Path
-  $exe="$env:ProgramFilesDockerDockerDocker Desktop.exe"
+  $exe=(Join-Path $env:ProgramFiles "Docker\Docker\Docker Desktop.exe")
   if(Test-Path $exe) {
     if(-not(Get-Process -Name "Docker Desktop" -ErrorAction SilentlyContinue)){ Start-Process $exe }
     for($i=0;$i-lt 36;$i++){ if(Docker-Ready){ return $true }; Start-Sleep 5 }
