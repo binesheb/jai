@@ -11,7 +11,7 @@ function Check([string]$name,[scriptblock]$action){
   try {
     & $action 2>&1 | ForEach-Object { Log "$name :: $($_.ToString())" }
     if($LASTEXITCODE -and $LASTEXITCODE -ne 0){ throw "Exit code $LASTEXITCODE" }
-    Log "$name: OK"
+    Log "${name}: OK"
   } catch { Log "$name: FAIL :: $($_.Exception.Message)" "ERROR"; $script:failed=$true }
 }
 Log "JAI health check started."
