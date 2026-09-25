@@ -90,13 +90,11 @@ function Publish-LogToGitHub([string]$LocalPath) {
     return @{Path=$remotePath;HtmlUrl=$result.content.html_url;DownloadUrl="https://raw.githubusercontent.com/$Repo/main/$remotePath"}
   } catch { Log "GitHub log upload failed for $LocalPath : $($_.Exception.Message)" "WARN"; return $null }
 }
-function Publish-AllLogsToGitHub {
+function Publish-LogsForIncident([string]$IncidentLogPath) {
   $results=@()
-  if(-not(Test-Path -LiteralPath $LogDir)){ return $results }
-  foreach($file in @(Get-ChildItem -LiteralPath $LogDir -Filter "*.log" -File -ErrorAction SilentlyContinue)){
-    $result=Publish-LogToGitHub $file.FullName
-    if($result){ $results += $result }
-  }
+  if(-not(Test-Path -LiteralPath $IncidentLogPath)){ return $results }
+  $result=Publish-LogToGitHub $IncidentLogPath
+  if($result){ $results += $result }
   return $results
 }
 function Finalize-ResolvedGitHubLogs([int]$IssueNumber) {
@@ -162,7 +160,7 @@ function Publish-GitHubIncident([bool]$Resolved) {
   }
   if(-not $issue){ $issue=Get-OpenIncident }
   if(-not (Test-Path -LiteralPath $IncidentLog)){ $IncidentLog=$Log }
-  $uploadedLogs=@(Publish-AllLogsToGitHub)
+  $uploadedLogs=@(Publish-LogsForIncident $IncidentLog)
   $incident=Read-LogTail $IncidentLog
   $incidentLinks = $uploadedLogs | ForEach-Object { "[GitHub log]($($_.HtmlUrl)) — raw: $($_.DownloadUrl)" } | Out-String
   if(-not $Resolved -and -not $issue){
