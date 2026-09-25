@@ -916,6 +916,19 @@ try {
       $containers = & docker ps -a --format "{{.Names}} | {{.Status}} | {{.Image}} | {{.Mounts}}" 2>&1
       $containers | ForEach-Object { Log "DOCKER CONTAINER SNAPSHOT :: $($_.ToString())" }
     } catch { Log "Docker container snapshot failed: $($_.Exception.Message)" "WARN" }
+    try {
+      Push-Location $RepoDir
+      try {
+        $composeLogs = & docker compose logs --no-color --tail 200 2>&1
+        $composeLogs | ForEach-Object { Log "DOCKER COMPOSE LOG :: $($_.ToString())" }
+      } finally { Pop-Location }
+    } catch { Log "Docker Compose log collection failed: $($_.Exception.Message)" "WARN" }
+    try {
+      foreach ($container in @("repo-postgres-1","repo-redis-1")) {
+        $inspect = & docker inspect $container 2>&1
+        $inspect | ForEach-Object { Log "DOCKER INSPECT $container :: $($_.ToString())" }
+      }
+    } catch { Log "Docker container inspect failed: $($_.Exception.Message)" "WARN" }
     throw
   }
 
