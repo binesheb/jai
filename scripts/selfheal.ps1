@@ -90,8 +90,8 @@ if(Test-Path (Join-Path $Repo ".git")){
   Push-Location $Repo
   try {
     Invoke-Step "Refreshing JAI source" {
-      git fetch --all --prune
-      git pull --ff-only
+      git -c http.version=HTTP/1.1 -c credential.interactive=never fetch --all --prune
+      git -c http.version=HTTP/1.1 -c credential.interactive=never pull --ff-only
     } | Out-Null
   } finally { Pop-Location }
 }
@@ -101,7 +101,7 @@ if(-not(Docker-Ready)){
   if(Invoke-Step "Restarting Docker Desktop" {
     $p=Get-Process -Name "Docker Desktop" -ErrorAction SilentlyContinue
     if($p){ $p | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep 3 }
-    $exe="$env:ProgramFilesDockerDockerDocker Desktop.exe"
+    $exe=Join-Path $env:ProgramFiles "Docker\Docker\Docker Desktop.exe"
     if(-not(Test-Path $exe)){ throw "Docker Desktop executable not found." }
     Start-Process $exe
     Start-Sleep 10
