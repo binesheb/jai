@@ -1,4 +1,25 @@
 services:
+  api:
+    build:
+      context: ./apps/api
+    restart: unless-stopped
+    environment:
+      JAI_VERSION: ${JAI_VERSION:-0.1.0}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+    ports:
+      - "127.0.0.1:${JAI_API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   postgres:
     image: pgvector/pgvector:0.8.6-pg16
     restart: unless-stopped
