@@ -1,0 +1,35 @@
+name: JAI Validation
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Python syntax
+        run: python -m compileall -q apps/api
+
+      - name: Validate Docker Compose
+        run: docker compose config
+
+      - name: Check required product files
+        shell: bash
+        run: |
+          test -f README.md
+          test -f docker-compose.yml
+          test -f docs/architecture.md
+          test -f docs/security.md
+          test -f docs/tenancy.md
+          test -f docs/local-ai.md
+          test -f database/migrations/001_core.sql
+          test -f database/migrations/002_crm_sales_loyalty.sql
+          test -f database/migrations/003_knowledge.sql
