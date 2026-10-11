@@ -11,6 +11,9 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    env:
+      # Non-production value used only to render the Compose configuration in CI.
+      JAI_POSTGRES_PASSWORD: ci-validation-only-password
     steps:
       - name: Checkout
         uses: actions/checkout@v4
