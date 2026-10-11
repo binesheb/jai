@@ -126,7 +126,7 @@ function Read-LogText([string]$Path,[int]$MaxChars=50000) {
 function Publish-LogToGitHub([string]$LocalPath, [string]$RemoteFolder = "logs/incidents", [bool]$DeleteLocal = $false) {
   if (-not (Test-Path -LiteralPath $LocalPath)) { return $null }
   $token = Get-GitHubToken
-  if ([string]::IsNullOrWhiteSpace($token)) { Log "GitHub log upload skipped: no token." "WARN"; return $null }
+  if ([string]::IsNullOrWhiteSpace($token)) { Log "GitHub log upload skipped: no token." "WARN" | Out-Host; return $null }
   $headers = @{ Authorization="Bearer $token"; Accept="application/vnd.github+json"; "X-GitHub-Api-Version"="2022-11-28" }
   try {
     $name = Split-Path -Leaf $LocalPath
