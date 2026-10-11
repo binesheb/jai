@@ -143,7 +143,10 @@ function Publish-LogToGitHub([string]$LocalPath, [string]$RemoteFolder = "logs/i
     $payload = @{ message="chore: upload JAI log $name"; content=$content; branch="main" }
     if($existing -and $existing.sha){ $payload.sha = $existing.sha }
     $result = Invoke-RestMethod -Method Put -Uri $uri -Headers $headers -Body ($payload | ConvertTo-Json -Depth 5) -ContentType "application/json"
-    Log "JAI log uploaded to GitHub: $remotePath"
+    # Log() writes through Tee-Object, which emits text into the PowerShell
+    # success pipeline. Suppress that incidental output here so callers receive
+    # only this function's structured upload result (or $null).
+    Log "JAI log uploaded to GitHub: $remotePath" | Out-Host
     # Never delete a diagnostic log as part of the upload operation. The caller
     # must first append the final upload/verification status and then explicitly
     # remove the local copy. This guarantees the GitHub copy contains the full
@@ -151,14 +154,14 @@ function Publish-LogToGitHub([string]$LocalPath, [string]$RemoteFolder = "logs/i
     if ($DeleteLocal) {
       try {
         Remove-Item -LiteralPath $LocalPath -Force -ErrorAction Stop
-        Log "Local log deleted after confirmed GitHub upload: $LocalPath"
+        Log "Local log deleted after confirmed GitHub upload: $LocalPath" | Out-Host
       } catch {
-        Log "GitHub upload succeeded but local log could not be deleted: $LocalPath : $($_.Exception.Message)" "WARN"
+        Log "GitHub upload succeeded but local log could not be deleted: $LocalPath : $($_.Exception.Message)" "WARN" | Out-Host
       }
     }
     return @{ Path=$remotePath; HtmlUrl=$result.content.html_url; DownloadUrl="https://raw.githubusercontent.com/$Repo/main/$remotePath" }
   } catch {
-    Log "GitHub log upload failed for $LocalPath : $($_.Exception.Message)" "WARN"
+    Log "GitHub log upload failed for $LocalPath : $($_.Exception.Message)" "WARN" | Out-Host
     return $null
   }
 }
