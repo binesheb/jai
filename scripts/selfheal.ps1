@@ -46,16 +46,16 @@ function Ensure-Compose-Env {
   if(Test-Path -LiteralPath $envFile){
     try {
       $existingText=Get-Content -LiteralPath $envFile -Raw -ErrorAction Stop
-      $passwordMatch=[regex]::Match($existingText,'(?im)^\s*JAI_POSTGRES_PASSWORD\s*=\s*(.*?)\s*$')
+      $passwordMatch=[regex]::Match($existingText,'(?im)^[ \t]*JAI_POSTGRES_PASSWORD[ \t]*=[ \t]*([^\r\n]*)[ \t]*$')
       if($passwordMatch.Success){
-        $existingPassword=$passwordMatch.Groups[1].Value.Trim().Trim('"').Trim("'")
+        $existingPassword=$passwordMatch.Groups[1].Value.Trim().Trim([char]'"').Trim([char]"'")
         if(-not [string]::IsNullOrWhiteSpace($existingPassword) -and $existingPassword -notmatch '^(?i)(changeme|change-me|your[-_ ]password|replace[-_ ]me)$'){
           Log "Existing local .env contains a non-empty JAI_POSTGRES_PASSWORD; preserving it."
           return $true
         }
       }
       Log "Existing local .env has a missing or blank JAI_POSTGRES_PASSWORD; repairing only that setting." "WARN"
-      $lines=@(Get-Content -LiteralPath $envFile -ErrorAction Stop | Where-Object { $_ -notmatch '^\s*JAI_POSTGRES_PASSWORD\s*=' })
+      $lines=@(Get-Content -LiteralPath $envFile -ErrorAction Stop | Where-Object { $_ -notmatch '^[ \t]*JAI_POSTGRES_PASSWORD[ \t]*=' })
     } catch {
       Log "Could not safely read existing .env; refusing to overwrite other settings: $($_.Exception.Message)" "ERROR"
       return $false
