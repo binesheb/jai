@@ -43,20 +43,45 @@ function Get-GitHubToken {
 function Read-LogTail([string]$Path,[int]$MaxChars=45000){ if(-not(Test-Path -LiteralPath $Path)){ return "(log file not found: $Path)" }; $text=Get-Content -LiteralPath $Path -Raw -ErrorAction SilentlyContinue; if($null -eq $text){ return "(unable to read log file: $Path)" }; if($text.Length -gt $MaxChars){ return "[log truncated]`n"+$text.Substring($text.Length-$MaxChars) }; return $text }
 function Ensure-Compose-Env {
   $envFile=Join-Path $Repo ".env"
-  if(Test-Path -LiteralPath $envFile){ Log "Existing local .env found; preserving it."; return $true }
+  if(Test-Path -LiteralPath $envFile){
+    try {
+      $existingText=Get-Content -LiteralPath $envFile -Raw -ErrorAction Stop
+      $passwordMatch=[regex]::Match($existingText,'(?im)^\s*JAI_POSTGRES_PASSWORD\s*=\s*(.*?)\s*$')
+      if($passwordMatch.Success){
+        $existingPassword=$passwordMatch.Groups[1].Value.Trim().Trim('"').Trim("'")
+        if(-not [string]::IsNullOrWhiteSpace($existingPassword) -and $existingPassword -notmatch '^(?i)(changeme|change-me|your[-_ ]password|replace[-_ ]me)$'){
+          Log "Existing local .env contains a non-empty JAI_POSTGRES_PASSWORD; preserving it."
+          return $true
+        }
+      }
+      Log "Existing local .env has a missing or blank JAI_POSTGRES_PASSWORD; repairing only that setting." "WARN"
+      $lines=@(Get-Content -LiteralPath $envFile -ErrorAction Stop | Where-Object { $_ -notmatch '^\s*JAI_POSTGRES_PASSWORD\s*=' })
+    } catch {
+      Log "Could not safely read existing .env; refusing to overwrite other settings: $($_.Exception.Message)" "ERROR"
+      return $false
+    }
+  } else {
+    $lines=@(
+      "JAI_POSTGRES_DB=jai"
+      "JAI_POSTGRES_USER=jai"
+      "JAI_POSTGRES_PORT=5432"
+      "JAI_REDIS_PORT=6379"
+    )
+    Log "Creating missing local JAI .env."
+  }
   $bytes=New-Object byte[] 32
   $rng=[Security.Cryptography.RandomNumberGenerator]::Create()
   try{$rng.GetBytes($bytes)}finally{$rng.Dispose()}
   $password=[Convert]::ToBase64String($bytes).Replace("+","-").Replace("/","_").Replace("=","")
-  @(
-    "JAI_POSTGRES_DB=jai"
-    "JAI_POSTGRES_USER=jai"
-    "JAI_POSTGRES_PASSWORD=$password"
-    "JAI_POSTGRES_PORT=5432"
-    "JAI_REDIS_PORT=6379"
-  ) | Set-Content -LiteralPath $envFile -Encoding UTF8
-  Log "Created missing local JAI .env with a generated PostgreSQL password."
-  return $true
+  $lines += "JAI_POSTGRES_PASSWORD=$password"
+  try {
+    $lines | Set-Content -LiteralPath $envFile -Encoding UTF8 -ErrorAction Stop
+    Log "JAI .env has a valid JAI_POSTGRES_PASSWORD; unrelated settings were preserved."
+    return $true
+  } catch {
+    Log "Failed to write repaired JAI .env: $($_.Exception.Message)" "ERROR"
+    return $false
+  }
 }
 function Save-State { if($script:State){ $script:State | ConvertTo-Json | Set-Content -LiteralPath $script:StateFile -Encoding UTF8 } }
 function Get-OpenIncident {
