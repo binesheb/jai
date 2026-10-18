@@ -188,3 +188,5 @@ The existing bootstrap, Docker infrastructure, health checks and self-healing me
 ## License
 
 See [LICENSE](LICENSE).
+
+<!-- temporary GitHub integration write test; safe to remove -->
