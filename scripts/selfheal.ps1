@@ -43,11 +43,27 @@ function Get-GitHubToken {
 function Read-LogTail([string]$Path,[int]$MaxChars=45000){ if(-not(Test-Path -LiteralPath $Path)){ return "(log file not found: $Path)" }; $text=Get-Content -LiteralPath $Path -Raw -ErrorAction SilentlyContinue; if($null -eq $text){ return "(unable to read log file: $Path)" }; if($text.Length -gt $MaxChars){ return "[log truncated]`n"+$text.Substring($text.Length-$MaxChars) }; return $text }
 function Ensure-Compose-Env {
   $envFile=Join-Path $Repo ".env"
+  $existingPassword=$null
   if(Test-Path -LiteralPath $envFile){
     try {
       $existingText=Get-Content -LiteralPath $envFile -Raw -ErrorAction Stop
-      $passwordMatches=[regex]::Matches($existingText,'(?im)^[ \t]*JAI_POSTGRES_PASSWORD[ \t]*=[ \t]*([^\r\n]*)[ \t]*
-      Log "Existing local .env has a missing or blank JAI_POSTGRES_PASSWORD; repairing only that setting." "WARN"
+      $passwordMatches=[regex]::Matches($existingText,'(?im)^[ \t]*JAI_POSTGRES_PASSWORD[ \t]*=([^\r\n]*)[ \t]*$')
+      foreach($match in $passwordMatches){
+        $candidate=$match.Groups[1].Value.Trim().Trim([char]'"').Trim([char]"'")
+        if(-not [string]::IsNullOrWhiteSpace($candidate) -and $candidate -notmatch '^(?i)(changeme|change-me|your[-_ ]password|replace[-_ ]me)$'){
+          # Keep the last valid value so duplicate entries do not rotate the database password.
+          $existingPassword=$candidate
+        }
+      }
+      if($passwordMatches.Count -eq 1 -and -not [string]::IsNullOrWhiteSpace($existingPassword)){
+        Log "Existing local .env contains a valid JAI_POSTGRES_PASSWORD; preserving it."
+        return $true
+      }
+      if($passwordMatches.Count -gt 1 -and -not [string]::IsNullOrWhiteSpace($existingPassword)){
+        Log "Existing local .env contains duplicate JAI_POSTGRES_PASSWORD entries; preserving a valid value and removing duplicates." "WARN"
+      } else {
+        Log "Existing local .env has a missing, blank, or placeholder JAI_POSTGRES_PASSWORD; repairing only that setting." "WARN"
+      }
       $lines=@(Get-Content -LiteralPath $envFile -ErrorAction Stop | Where-Object { $_ -notmatch '^[ \t]*JAI_POSTGRES_PASSWORD[ \t]*=' })
     } catch {
       Log "Could not safely read existing .env; refusing to overwrite other settings: $($_.Exception.Message)" "ERROR"
@@ -62,14 +78,18 @@ function Ensure-Compose-Env {
     )
     Log "Creating missing local JAI .env."
   }
-  $bytes=New-Object byte[] 32
-  $rng=[Security.Cryptography.RandomNumberGenerator]::Create()
-  try{$rng.GetBytes($bytes)}finally{$rng.Dispose()}
-  $password=[Convert]::ToBase64String($bytes).Replace("+","-").Replace("/","_").Replace("=","")
+  if([string]::IsNullOrWhiteSpace($existingPassword)){
+    $bytes=New-Object byte[] 32
+    $rng=[Security.Cryptography.RandomNumberGenerator]::Create()
+    try{$rng.GetBytes($bytes)}finally{$rng.Dispose()}
+    $password=[Convert]::ToBase64String($bytes).Replace("+","-").Replace("/","_").Replace("=","")
+  } else {
+    $password=$existingPassword
+  }
   $lines += "JAI_POSTGRES_PASSWORD=$password"
   try {
     $lines | Set-Content -LiteralPath $envFile -Encoding UTF8 -ErrorAction Stop
-    Log "JAI .env has a valid JAI_POSTGRES_PASSWORD; unrelated settings were preserved."
+    Log "JAI .env has exactly one valid JAI_POSTGRES_PASSWORD; unrelated settings were preserved."
     return $true
   } catch {
     Log "Failed to write repaired JAI .env: $($_.Exception.Message)" "ERROR"
