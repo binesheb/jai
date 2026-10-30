@@ -50,7 +50,7 @@ function Ensure-Compose-Env {
       $passwordMatches=[regex]::Matches($existingText,'(?im)^[ \t]*JAI_POSTGRES_PASSWORD[ \t]*=([^\r\n]*)[ \t]*$')
       foreach($match in $passwordMatches){
         $candidate=$match.Groups[1].Value.Trim().Trim([char]'"').Trim([char]"'")
-        if(-not [string]::IsNullOrWhiteSpace($candidate) -and $candidate -notmatch '^(?i)(?:changeme|change[-_ ]?me|your[-_ ]password(?:[-_ ].*)?|replace[-_ ](?:me|with)(?:[-_ ].*)?)){
+        if(-not [string]::IsNullOrWhiteSpace($candidate) -and $candidate -notmatch '^(?i)(?:changeme|change[-_ ]?me|your[-_ ]password(?:[-_ ].*)?|replace[-_ ](?:me|with)(?:[-_ ].*)?)\z'{
           # Keep the last valid value so duplicate entries do not rotate the database password.
           $existingPassword=$candidate
         }
