@@ -18,7 +18,7 @@ New-Item -ItemType Directory -Path $Repo | Out-Null
 try {
   $envFile = Join-Path $Repo ".env"
   @(
-    "JAI_POSTGRES_PASSWORD='secret # part'"
+    "JAI_POSTGRES_PASSWORD='secret # part' # preserve this comment"
     "JAI_POSTGRES_PASSWORD=replace-with-a-long-random-secret"
     "KEEP_SETTING=keep-me"
   ) | Set-Content -LiteralPath $envFile -Encoding UTF8
@@ -27,7 +27,7 @@ try {
   $lines = @(Get-Content -LiteralPath $envFile)
   $passwordLines = @($lines | Where-Object { $_ -match '^[ \t]*JAI_POSTGRES_PASSWORD[ \t]*=' })
   if ($passwordLines.Count -ne 1) { throw "Duplicate password entries were not reduced to one." }
-  if ($passwordLines[0] -cne "JAI_POSTGRES_PASSWORD='secret # part'") {
+  if ($passwordLines[0] -cne "JAI_POSTGRES_PASSWORD='secret # part' # preserve this comment") {
     throw "Quoted password value was not preserved exactly."
   }
   if ($lines -notcontains "KEEP_SETTING=keep-me") { throw "Unrelated .env setting was not preserved." }
