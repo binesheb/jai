@@ -45,10 +45,13 @@ function Ensure-Compose-Env {
   $envFile=Join-Path $Repo ".env"
   $existingPassword=$null
   $existingPasswordRaw=$null
+  $ambiguousPassword=$false
   if(Test-Path -LiteralPath $envFile){
     try {
       $existingText=Get-Content -LiteralPath $envFile -Raw -ErrorAction Stop
-      $passwordMatches=[regex]::Matches($existingText,'(?im)^[ \t]*JAI_POSTGRES_PASSWORD[ \t]*=([^\r\n]*)[ \t]*$')
+      # Compose dotenv accepts both KEY=value and KEY: value. Match both so a
+      # colon-form password is never left behind when a replacement is written.
+      $passwordMatches=[regex]::Matches($existingText,'(?im)^[ \t]*JAI_POSTGRES_PASSWORD[ \t]*[:=][ \t]*(.*?)[ \t]*$')
       foreach($match in $passwordMatches){
         $rawCandidate=$match.Groups[1].Value.Trim()
         $candidate=$rawCandidate
@@ -67,20 +70,45 @@ function Ensure-Compose-Env {
               }
             }
           }
-          if($closingQuote -lt 0){ continue }
+          if($closingQuote -lt 0){
+            $ambiguousPassword=$true
+            continue
+          }
           $trailing=$candidate.Substring($closingQuote+1)
           if(-not [string]::IsNullOrWhiteSpace($trailing) -and $trailing -notmatch '^[ \t]+#'){
+            $ambiguousPassword=$true
             continue
           }
           $candidate=$candidate.Substring(1,$closingQuote-1)
-        } elseif($candidate.EndsWith("'") -or $candidate.EndsWith('"')){
-          continue
+          # Double-quoted dotenv values interpolate variables. Without resolving
+          # Compose's complete interpolation environment, do not guess the DB
+          # password or replace it on an initialized volume.
+          if($quote -eq '"' -and $candidate.Contains('$')){
+            $ambiguousPassword=$true
+            continue
+          }
+        } else {
+          # In unquoted values, an inline comment starts after whitespace.
+          $candidate=[regex]::Replace($candidate,'[ \t]+#.*$','').Trim()
+          if($candidate.StartsWith('#')){
+            $candidate=""
+          }
+          # Unquoted dollar expressions are Compose interpolation. Treat them
+          # as ambiguous rather than silently generating a different password.
+          if($candidate.Contains('$')){
+            $ambiguousPassword=$true
+            continue
+          }
         }
-        if(-not [string]::IsNullOrWhiteSpace($candidate) -and $candidate -notmatch '^(changeme|change[-_ ]?me|your[-_ ]password|replace[-_ ](me|with))'){
-          # Preserve the raw Compose value, including quotes, if duplicates are removed.
+        if(-not [string]::IsNullOrWhiteSpace($candidate) -and $candidate -notmatch '(?i)^(changeme|change[-_ ]?me|your[-_ ]password|replace[-_ ](me|with))'){
+          # Preserve the raw Compose value, including quotes/comments, if duplicates are removed.
           $existingPassword=$candidate
           $existingPasswordRaw=$rawCandidate
         }
+      }
+      if($ambiguousPassword){
+        Log "Existing local .env has an ambiguous JAI_POSTGRES_PASSWORD expression; refusing to change a possibly initialized database password." "ERROR"
+        return $false
       }
       if($passwordMatches.Count -eq 1 -and -not [string]::IsNullOrWhiteSpace($existingPassword)){
         Log "Existing local .env contains a valid JAI_POSTGRES_PASSWORD; preserving it."
@@ -91,7 +119,7 @@ function Ensure-Compose-Env {
       } else {
         Log "Existing local .env has a missing, blank, or placeholder JAI_POSTGRES_PASSWORD; repairing only that setting." "WARN"
       }
-      $lines=@(Get-Content -LiteralPath $envFile -ErrorAction Stop | Where-Object { $_ -notmatch '^[ \t]*JAI_POSTGRES_PASSWORD[ \t]*=' })
+      $lines=@(Get-Content -LiteralPath $envFile -ErrorAction Stop | Where-Object { $_ -notmatch '^[ \t]*JAI_POSTGRES_PASSWORD[ \t]*[:=]' })
     } catch {
       Log "Could not safely read existing .env; refusing to overwrite other settings: $($_.Exception.Message)" "ERROR"
       return $false
