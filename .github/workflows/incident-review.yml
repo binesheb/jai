@@ -5,13 +5,14 @@ on:
     types: [opened, reopened, edited]
 
 permissions:
-  contents: write
   issues: write
-  pull-requests: write
 
 jobs:
   review:
-    if: github.event.issue.state == 'open' && startsWith(github.event.issue.title, 'JAI Bootstrap Incident -')
+    if: >-
+      github.event.issue.state == 'open' &&
+      startsWith(github.event.issue.title, 'JAI Bootstrap Incident -') &&
+      github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Rewrite incident log into a resolution checklist
@@ -24,6 +25,7 @@ jobs:
           import os
           import re
           import subprocess
+          import textwrap
 
           issue = os.environ["ISSUE_NUMBER"]
           repo = os.environ["GH_REPO"]
@@ -87,17 +89,19 @@ jobs:
           )
           subprocess.run(
               ["gh", "issue", "comment", issue, "--repo", repo, "--body",
-               """## AI review queue
+               textwrap.dedent("""\
+               ## AI review queue
 
-This incident is ready for ChatGPT/GitHub review. Read all logs under logs/incidents/ for this host, inspect the relevant repository code and recent CI history, then:
+               This incident is ready for ChatGPT/GitHub review. Read all logs under logs/incidents/ for this host, inspect the relevant repository code and recent CI history, then:
 
-1. Determine the root cause from evidence.
-2. If it is documentation/configuration/operational guidance, update the Issue with the exact remediation.
-3. If a repository code/config change is required, create a focused PR; do not make unrelated changes.
-4. Run/verify CI and record the result on this Issue.
-5. If the failure is caused by the Windows environment rather than JAI code, document the environmental remediation instead of changing code.
+               1. Determine the root cause from evidence.
+               2. If it is documentation/configuration/operational guidance, update the Issue with the exact remediation.
+               3. If a repository code/config change is required, create a focused PR; do not make unrelated changes.
+               4. Run/verify CI and record the result on this Issue.
+               5. If the failure is caused by the Windows environment rather than JAI code, document the environmental remediation instead of changing code.
 
-Do not invent successful tests or claim the local machine was repaired unless the evidence shows it."""],
+               Do not invent successful tests or claim the local machine was repaired unless the evidence shows it.
+               """)],
               check=True
           )
           print(f"Updated issue #{issue} with a machine-generated resolution checklist and AI review request.")
