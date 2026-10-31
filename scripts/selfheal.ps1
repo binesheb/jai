@@ -52,14 +52,30 @@ function Ensure-Compose-Env {
       foreach($match in $passwordMatches){
         $rawCandidate=$match.Groups[1].Value.Trim()
         $candidate=$rawCandidate
-        if($candidate.StartsWith("'")){
-          if($candidate -match "^'((?:\\\\'|[^'])*)'(?:[ \\t]+#.*)?$"){
-            $candidate=$Matches[1]
-          } else {
+        if($candidate.StartsWith("'") -or $candidate.StartsWith('"')){
+          $quote=$candidate.Substring(0,1)
+          $closingQuote=-1
+          for($i=1;$i -lt $candidate.Length;$i++){
+            if($candidate.Substring($i,1) -ceq $quote){
+              $backslashes=0
+              for($j=$i-1;$j -ge 0 -and $candidate[$j] -eq [char]92;$j--){
+                $backslashes++
+              }
+              if(($backslashes % 2) -eq 0){
+                $closingQuote=$i
+                break
+              }
+            }
+          }
+          if($closingQuote -lt 0){ continue }
+          $trailing=$candidate.Substring($closingQuote+1)
+          if(-not [string]::IsNullOrWhiteSpace($trailing) -and $trailing -notmatch '^[ \t]+#'){
             continue
           }
-        } elseif($candidate.StartsWith('"')){
-          if($candidate -match '^"((?:\\\\"|[^"])*)"(?:[ \\t]+#.*)?
+          $candidate=$candidate.Substring(1,$closingQuote-1)
+        } elseif($candidate.EndsWith("'") -or $candidate.EndsWith('"')){
+          continue
+        }
         if(-not [string]::IsNullOrWhiteSpace($candidate) -and $candidate -notmatch '^(changeme|change[-_ ]?me|your[-_ ]password|replace[-_ ](me|with))'){
           # Preserve the raw Compose value, including quotes, if duplicates are removed.
           $existingPassword=$candidate
