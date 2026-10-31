@@ -66,6 +66,24 @@ try {
     throw "Ambiguous interpolation was modified instead of failing closed."
   }
 
+  @("JAI_POSTGRES_PASSWORD: replace-with-a-long-random-secret", "KEEP_SETTING=keep-me") |
+    Set-Content -LiteralPath $envFile -Encoding UTF8
+  if (-not (Ensure-Compose-Env)) { throw "Colon-delimited placeholder repair returned false." }
+  $lines = @(Get-Content -LiteralPath $envFile)
+  $passwordLines = @($lines | Where-Object { $_ -match '^[ \t]*JAI_POSTGRES_PASSWORD[ \t]*[:=]' })
+  if ($passwordLines.Count -ne 1 -or $passwordLines[0] -match '^[ \t]*JAI_POSTGRES_PASSWORD[ \t]*:') {
+    throw "Invalid colon-delimited entry was not replaced by one normalized password."
+  }
+  if ($lines -notcontains "KEEP_SETTING=keep-me") { throw "Unrelated setting was not preserved after colon repair." }
+
+  $ambiguousDoubleQuoted = 'JAI_POSTGRES_PASSWORD="$MISSING"'
+  Set-Content -LiteralPath $envFile -Value $ambiguousDoubleQuoted -Encoding UTF8
+  if (Ensure-Compose-Env) { throw "Double-quoted unresolved interpolation was incorrectly accepted." }
+  $lines = @(Get-Content -LiteralPath $envFile)
+  if ($lines.Count -ne 1 -or $lines[0] -cne $ambiguousDoubleQuoted) {
+    throw "Double-quoted interpolation was modified instead of failing closed."
+  }
+
   Write-Host "[PASS] Quoted duplicate, comment-only, colon delimiter, trailing quote, and unresolved interpolation cases."
 }
 finally {
