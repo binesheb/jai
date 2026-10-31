@@ -26,6 +26,9 @@ jobs:
             }
             Write-Host "[OK] $file"
           }
+      - name: Test self-heal environment repair
+        shell: pwsh
+        run: ./tests/Test-SelfHealEnv.ps1
       - name: Sanity
         run: |
           test -f README.md
