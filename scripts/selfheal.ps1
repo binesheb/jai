@@ -44,15 +44,27 @@ function Read-LogTail([string]$Path,[int]$MaxChars=45000){ if(-not(Test-Path -Li
 function Ensure-Compose-Env {
   $envFile=Join-Path $Repo ".env"
   $existingPassword=$null
+  $existingPasswordRaw=$null
   if(Test-Path -LiteralPath $envFile){
     try {
       $existingText=Get-Content -LiteralPath $envFile -Raw -ErrorAction Stop
       $passwordMatches=[regex]::Matches($existingText,'(?im)^[ \t]*JAI_POSTGRES_PASSWORD[ \t]*=([^\r\n]*)[ \t]*$')
       foreach($match in $passwordMatches){
-        $candidate=$match.Groups[1].Value.Trim().Trim([char]'"').Trim([char]"'")
+        $rawCandidate=$match.Groups[1].Value.Trim()
+        $candidate=$rawCandidate
+        $startsSingle=$candidate.StartsWith("'")
+        $endsSingle=$candidate.EndsWith("'")
+        $startsDouble=$candidate.StartsWith('"')
+        $endsDouble=$candidate.EndsWith('"')
+        if(($startsSingle -and $endsSingle) -or ($startsDouble -and $endsDouble)){
+          $candidate=$candidate.Substring(1,$candidate.Length-2)
+        } elseif($startsSingle -or $endsSingle -or $startsDouble -or $endsDouble){
+          continue
+        }
         if(-not [string]::IsNullOrWhiteSpace($candidate) -and $candidate -notmatch '^(changeme|change[-_ ]?me|your[-_ ]password|replace[-_ ](me|with))'){
-          # Keep the last valid value so duplicate entries do not rotate the database password.
+          # Preserve the raw Compose value, including quotes, if duplicates are removed.
           $existingPassword=$candidate
+          $existingPasswordRaw=$rawCandidate
         }
       }
       if($passwordMatches.Count -eq 1 -and -not [string]::IsNullOrWhiteSpace($existingPassword)){
@@ -83,10 +95,11 @@ function Ensure-Compose-Env {
     $rng=[Security.Cryptography.RandomNumberGenerator]::Create()
     try{$rng.GetBytes($bytes)}finally{$rng.Dispose()}
     $password=[Convert]::ToBase64String($bytes).Replace("+","-").Replace("/","_").Replace("=","")
+    $passwordEntryValue=$password
   } else {
-    $password=$existingPassword
+    $passwordEntryValue=$existingPasswordRaw
   }
-  $lines += "JAI_POSTGRES_PASSWORD=$password"
+  $lines += "JAI_POSTGRES_PASSWORD=$passwordEntryValue"
   try {
     $lines | Set-Content -LiteralPath $envFile -Encoding UTF8 -ErrorAction Stop
     Log "JAI .env has exactly one valid JAI_POSTGRES_PASSWORD; unrelated settings were preserved."
